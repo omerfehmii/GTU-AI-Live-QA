@@ -1,0 +1,99 @@
+[
+  {
+    "id": "reg-001",
+    "question": "On lisans ve lisans egitim ogretim yonetmeligine gore guz ve bahar yariyillarinin normal suresi kac haftadir?",
+    "expected_source_contains": ["YN-0001", "normal süresi on dört haftadır"],
+    "expected_answer_keywords": ["on dört hafta", "14 hafta"],
+    "category": "yonetmelik",
+    "notes": "Lisans yonetmeligi MADDE 11"
+  },
+  {
+    "id": "reg-002",
+    "question": "GTU lisansustu egitim ve ogretim ile ilgili usul ve esaslari hangi yonetmelik duzenler?",
+    "expected_source_contains": ["YN-0002", "Lisansüstü Eğitim ve Öğretim Yönetmeliği"],
+    "expected_answer_keywords": ["lisansüstü eğitim ve öğretim yönetmeliği", "yn-0002"],
+    "category": "yonetmelik",
+    "notes": "Lisansustu yonetmelik girisi"
+  },
+  {
+    "id": "reg-003",
+    "question": "Tez yazimi icin GTU'de hangi kilavuz kullaniliyor?",
+    "expected_source_contains": ["Tez Yazım Kılavuzu", "tez"],
+    "expected_answer_keywords": ["tez yazım kılavuzu", "tez"],
+    "category": "kilavuz",
+    "notes": "Tez yazim PDF belgesi"
+  },
+  {
+    "id": "reg-004",
+    "question": "Mezuniyet belgesi ve diploma esaslarini hangi yonerge duzenler?",
+    "expected_source_contains": ["Mezuniyet", "Diploma"],
+    "expected_answer_keywords": ["mezuniyet", "diploma", "yönerge"],
+    "category": "yonerge",
+    "notes": "Mezuniyet ve diploma yonergesi"
+  },
+  {
+    "id": "web-001",
+    "question": "AKTS bilgi paketine nereden ulasabilirim?",
+    "expected_source_contains": ["abl.gtu.edu.tr/ects", "AKTS Bilgi Paketi"],
+    "expected_answer_keywords": ["akts", "bilgi paketi", "abl.gtu.edu.tr/ects"],
+    "category": "web",
+    "notes": "AKTS ana sayfasi"
+  },
+  {
+    "id": "web-002",
+    "question": "Akademik takvim icin hangi GTU sayfasina gitmeliyim?",
+    "expected_source_contains": ["takvim.gtu.edu.tr", "Akademik Takvim"],
+    "expected_answer_keywords": ["takvim", "akademik takvim", "takvim.gtu.edu.tr"],
+    "category": "web",
+    "notes": "Takvim alt alanı"
+  },
+  {
+    "id": "web-003",
+    "question": "Lisans yonetmelik ve yonergelere GTU'de hangi sayfadan ulasabilirim?",
+    "expected_source_contains": ["icerik/1479/592", "Lisans Yönetmelik ve Yönergeler"],
+    "expected_answer_keywords": ["öğrenci işleri", "lisans yönetmelik", "yönergeler"],
+    "category": "web",
+    "notes": "Ogrenci isleri sayfasi"
+  },
+  {
+    "id": "web-004",
+    "question": "GTU Bilgisayar Muhendisligi bolumunun ana soylemi nedir?",
+    "expected_source_contains": ["bilgisayar-muhendisligi", "İş arayan değil"],
+    "expected_answer_keywords": ["iş arayan değil", "iş kurabilen mühendisler"],
+    "category": "bolum",
+    "notes": "Bilgisayar Muhendisligi tanitim sayfasi"
+  },
+  {
+    "id": "web-005",
+    "question": "GTU Bilgisayar Muhendisligi bolumu ne tur ogrenciler yetistirmeyi amacliyor?",
+    "expected_source_contains": ["bilgisayar-muhendisligi", "yaratıcı ve üretken"],
+    "expected_answer_keywords": ["yaratıcı", "üretken", "bilgisayar mühendisleri"],
+    "category": "bolum",
+    "notes": "Bolum amaci"
+  },
+  {
+    "id": "pdf-001",
+    "question": "GTU arastirma politikasi belgesinin adi nedir?",
+    "expected_source_contains": ["Research Policy", "Araştırma Politikası"],
+    "expected_answer_keywords": ["araştırma politikası", "research policy"],
+    "category": "pdf",
+    "notes": "Research policy belgesi"
+  },
+  {
+    "id": "pdf-002",
+    "question": "Erasmus ogrenci ve personel degisimi icin hangi yonerge kullaniliyor?",
+    "expected_source_contains": ["Erasmus", "Değişim Yönergesi"],
+    "expected_answer_keywords": ["erasmus", "değişim yönergesi"],
+    "category": "pdf",
+    "notes": "Erasmus yonergesi"
+  },
+  {
+    "id": "pdf-003",
+    "question": "2025-2026 ogrenci el kitabi GTU'de var mi?",
+    "expected_source_contains": ["ÖĞRENCİ EL KİTABI", "2025-2026"],
+    "expected_answer_keywords": ["öğrenci el kitabı", "2025-2026"],
+    "category": "pdf",
+    "notes": "Ogrenci el kitabi PDF"
+  }
+]
+
