@@ -28,6 +28,10 @@ export function Navbar() {
         };
     }, []);
 
+    if (pathname === "/live") {
+        return null;
+    }
+
     return (
         <nav className="navbar">
             <Link href="/" className="navbar-brand">
@@ -47,6 +51,12 @@ export function Navbar() {
                     className={`navbar-link${pathname === "/admin" ? " active" : ""}`}
                 >
                     Admin
+                </Link>
+                <Link
+                    href="/live"
+                    className={`navbar-link${pathname === "/live" ? " active" : ""}`}
+                >
+                    Yayın
                 </Link>
 
                 <div className="navbar-status">

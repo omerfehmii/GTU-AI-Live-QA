@@ -64,6 +64,14 @@ class Document(Base):
     )
 
 
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp, onupdate=timestamp)
+
+
 class Chunk(Base):
     __tablename__ = "chunks"
 
@@ -126,6 +134,10 @@ class Answer(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     fallback_used: Mapped[bool] = mapped_column(default=False)
+    audio_url: Mapped[str | None] = mapped_column(String(1000))
+    audio_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    audio_model_name: Mapped[str | None] = mapped_column(String(255))
+    audio_error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
 
     question: Mapped[Question] = relationship(back_populates="answer")

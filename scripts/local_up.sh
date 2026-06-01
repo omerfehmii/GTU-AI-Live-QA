@@ -18,6 +18,47 @@ WORKER_LOG="$LOG_DIR/worker.log"
 
 mkdir -p "$LOG_DIR"
 
+resolve_npm() {
+  if [[ -n "${NPM_BIN:-}" && -x "$NPM_BIN" ]]; then
+    echo "$NPM_BIN"
+    return
+  fi
+
+  if command -v npm >/dev/null 2>&1; then
+    command -v npm
+    return
+  fi
+
+  local bundled_npm="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/npm"
+  if [[ -x "$bundled_npm" ]]; then
+    echo "$bundled_npm"
+    return
+  fi
+}
+
+resolve_node() {
+  if [[ -n "${NODE_BIN:-}" && -x "$NODE_BIN" ]]; then
+    echo "$NODE_BIN"
+    return
+  fi
+
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return
+  fi
+
+  local bundled_node="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+  if [[ -x "$bundled_node" ]]; then
+    echo "$bundled_node"
+    return
+  fi
+
+  echo "node"
+}
+
+NPM_CMD="$(resolve_npm || true)"
+NODE_CMD="$(resolve_node)"
+
 port_in_use() {
   local port="$1"
   lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
@@ -119,10 +160,21 @@ ensure_backend_deps() {
 ensure_frontend_deps() {
   local stamp="$RUNTIME_DIR/frontend-deps.stamp"
 
+  if [[ -z "$NPM_CMD" ]]; then
+    if [[ -d "$ROOT_DIR/frontend/node_modules" ]]; then
+      echo "npm bulunamadi; mevcut frontend/node_modules kullaniliyor." >&2
+      touch "$stamp"
+      return
+    fi
+
+    echo "npm bulunamadi ve frontend/node_modules yok. Frontend bagimliliklari yuklenemiyor." >&2
+    return 1
+  fi
+
   if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
     (
       cd "$ROOT_DIR/frontend"
-      npm install
+      "$NPM_CMD" install
     )
     touch "$stamp"
     return
@@ -131,7 +183,7 @@ ensure_frontend_deps() {
   if [[ ! -f "$stamp" || "$ROOT_DIR/frontend/package.json" -nt "$stamp" || "$ROOT_DIR/frontend/package-lock.json" -nt "$stamp" ]]; then
     (
       cd "$ROOT_DIR/frontend"
-      npm install
+      "$NPM_CMD" install
     )
     touch "$stamp"
   fi
@@ -174,12 +226,14 @@ if [[ -f "$BACKEND_PID_FILE" ]]; then
 else
   start_detached \
     "$ROOT_DIR/backend" \
-    "$BACKEND_PID_FILE" \
-    "$BACKEND_LOG" \
-    env \
-    APP_DOMAIN="$FRONTEND_URL" \
-    BACKEND_CORS_ORIGINS="$CORS_ORIGINS" \
-    DATABASE_URL="$DATABASE_URL" \
+	    "$BACKEND_PID_FILE" \
+	    "$BACKEND_LOG" \
+	    env \
+	    -u OPENAI_API_KEY \
+	    -u OPENROUTER_API_KEY \
+	    APP_DOMAIN="$FRONTEND_URL" \
+	    BACKEND_CORS_ORIGINS="$CORS_ORIGINS" \
+	    DATABASE_URL="$DATABASE_URL" \
     REDIS_URL="redis://localhost:6379/0" \
     "$ROOT_DIR/backend/.venv/bin/uvicorn" app.main:app --reload --host 0.0.0.0 --port "$BACKEND_PORT"
   echo "$BACKEND_PORT" > "$BACKEND_PORT_FILE"
@@ -192,27 +246,39 @@ if [[ -f "$FRONTEND_PID_FILE" ]]; then
   FRONTEND_PORT="$(cat "$FRONTEND_PORT_FILE")"
   FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT"
 else
-  start_detached \
-    "$ROOT_DIR/frontend" \
-    "$FRONTEND_PID_FILE" \
-    "$FRONTEND_LOG" \
-    env \
-    NEXT_PUBLIC_API_URL="$BACKEND_URL/api" \
-    npm run dev -- --port "$FRONTEND_PORT"
+  if [[ -n "$NPM_CMD" ]]; then
+    start_detached \
+      "$ROOT_DIR/frontend" \
+      "$FRONTEND_PID_FILE" \
+      "$FRONTEND_LOG" \
+      env \
+      NEXT_PUBLIC_API_URL="$BACKEND_URL/api" \
+      "$NPM_CMD" run dev -- --port "$FRONTEND_PORT"
+  else
+    start_detached \
+      "$ROOT_DIR/frontend" \
+      "$FRONTEND_PID_FILE" \
+      "$FRONTEND_LOG" \
+      env \
+      NEXT_PUBLIC_API_URL="$BACKEND_URL/api" \
+      "$NODE_CMD" "$ROOT_DIR/frontend/node_modules/next/dist/bin/next" dev --webpack --hostname 0.0.0.0 --port "$FRONTEND_PORT"
+  fi
   echo "$FRONTEND_PORT" > "$FRONTEND_PORT_FILE"
 fi
 
 wait_for_http "$FRONTEND_URL" "Frontend" 45 "$FRONTEND_LOG"
 
-if [[ "${LOCAL_START_WORKER:-0}" == "1" && ! -f "$WORKER_PID_FILE" ]]; then
+if [[ "${LOCAL_START_WORKER:-1}" == "1" && ! -f "$WORKER_PID_FILE" ]]; then
   start_detached \
     "$ROOT_DIR/backend" \
-    "$WORKER_PID_FILE" \
-    "$WORKER_LOG" \
-    env \
-    APP_DOMAIN="$FRONTEND_URL" \
-    BACKEND_CORS_ORIGINS="$CORS_ORIGINS" \
-    DATABASE_URL="$DATABASE_URL" \
+	    "$WORKER_PID_FILE" \
+	    "$WORKER_LOG" \
+	    env \
+	    -u OPENAI_API_KEY \
+	    -u OPENROUTER_API_KEY \
+	    APP_DOMAIN="$FRONTEND_URL" \
+	    BACKEND_CORS_ORIGINS="$CORS_ORIGINS" \
+	    DATABASE_URL="$DATABASE_URL" \
     REDIS_URL="redis://localhost:6379/0" \
     "$ROOT_DIR/backend/.venv/bin/python" -m app.worker
 fi

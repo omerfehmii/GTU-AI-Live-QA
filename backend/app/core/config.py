@@ -43,6 +43,18 @@ class Settings(BaseSettings):
     source_archive_dir: str = "data/source_archive"
     youtube_api_key: str | None = None
     youtube_poll_interval_seconds: int = 5
+    tts_enabled: bool = True
+    tts_provider: Literal["openai", "openrouter"] = "openrouter"
+    tts_model: str = "openai/gpt-4o-mini-tts-2025-12-15"
+    tts_voice: str = "nova"
+    tts_response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "mp3"
+    tts_instructions: str = (
+        "Voice Affect: Warm, clear, and teacher-like.\n"
+        "Tone: Helpful and composed.\n"
+        "Pacing: Moderate, with short pauses between ideas.\n"
+        "Pronunciation: Enunciate Turkish university terms clearly."
+    )
+    generated_audio_dir: str = "data/generated_audio"
     admin_username: str = "admin"
     admin_password: str = "change-me-demo"
 
@@ -76,6 +88,14 @@ class Settings(BaseSettings):
         if archive_path.is_absolute():
             return archive_path
         return base_dir / archive_path
+
+    @property
+    def generated_audio_path(self) -> Path:
+        base_dir = Path(__file__).resolve().parents[2]
+        audio_path = Path(self.generated_audio_dir)
+        if audio_path.is_absolute():
+            return audio_path
+        return base_dir / audio_path
 
 
 @lru_cache

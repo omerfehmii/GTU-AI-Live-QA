@@ -1,11 +1,15 @@
 export type SourceType = "web" | "pdf" | "manual" | "youtube";
 export type QuestionStatus = "pending" | "processing" | "answered" | "failed";
 export type StreamStatus = "connected" | "disconnected" | "stopped" | "error";
+export type AvatarState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
 export interface Answer {
   id: string;
   content: string;
   fallback_used: boolean;
+  audio_url: string | null;
+  audio_duration_ms: number | null;
+  audio_model_name: string | null;
   created_at: string;
 }
 
@@ -30,6 +34,16 @@ export interface Metrics {
   avg_latency_ms: number;
 }
 
+export interface LiveState {
+  avatar_state: AvatarState;
+  current_question: Question | null;
+  latest_answered: Question | null;
+  queue: Question[];
+  queue_size: number;
+  active_streams: number;
+  generated_at: string;
+}
+
 export interface StreamSession {
   id: string;
   youtube_video_id: string;
@@ -39,6 +53,13 @@ export interface StreamSession {
   error_message: string | null;
   last_polled_at: string | null;
   created_at: string;
+}
+
+export interface AdminSettings {
+  tts_enabled: boolean;
+  tts_provider: string;
+  tts_model: string;
+  tts_voice: string;
 }
 
 export interface DocumentItem {

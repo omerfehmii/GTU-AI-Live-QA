@@ -39,3 +39,17 @@ def test_openrouter_provider_sets_headers_and_defaults() -> None:
     }
     assert settings.active_chat_model == "openai/gpt-4.1-mini"
     assert settings.active_embedding_model == "openai/text-embedding-3-small"
+
+
+def test_provider_options_can_target_openrouter_for_tts() -> None:
+    settings = Settings(
+        _env_file=None,
+        ai_provider="openai",
+        openai_api_key="openai-secret",
+        openrouter_api_key="openrouter-secret",
+    )
+
+    options = resolve_provider_options(settings, provider="openrouter")
+
+    assert options.api_key == "openrouter-secret"
+    assert options.base_url == "https://openrouter.ai/api/v1"

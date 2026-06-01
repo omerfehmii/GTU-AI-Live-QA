@@ -72,12 +72,12 @@ export function HomeDashboard() {
     event.preventDefault();
     startTransition(async () => {
       try {
-        await postJson<Question>("/questions/manual", {
+        await postJson<Question>("/questions/manual/queue", {
           content: draft,
           author_name: "Web Demo",
         });
         setDraft("");
-        setNote("Manuel soru alındı ve işleme girdi.");
+        setNote("Manuel soru alındı ve yayın kuyruğuna eklendi.");
         await refresh();
       } catch (error) {
         setNote(error instanceof Error ? error.message : "Soru gönderilemedi.");
@@ -85,7 +85,7 @@ export function HomeDashboard() {
     });
   }
 
-  const latestAnswerKey = questions.reduce<string | null>((latest, question) => {
+  const latestAnsweredQuestion = questions.reduce<Question | null>((latest, question) => {
     const createdAt = question.answer?.created_at;
 
     if (!createdAt) {
@@ -93,11 +93,14 @@ export function HomeDashboard() {
     }
 
     if (!latest) {
-      return createdAt;
+      return question;
     }
 
-    return new Date(createdAt).getTime() > new Date(latest).getTime() ? createdAt : latest;
+    const latestCreatedAt = latest.answer?.created_at ?? "";
+    return new Date(createdAt).getTime() > new Date(latestCreatedAt).getTime() ? question : latest;
   }, null);
+  const latestAnswerKey = latestAnsweredQuestion?.answer?.created_at ?? null;
+  const latestAnswerText = latestAnsweredQuestion?.answer?.content ?? "";
 
   return (
     <main className="shell">
@@ -124,6 +127,9 @@ export function HomeDashboard() {
                 <Link className="admin-link" href="/admin">
                   ⚙ Admin konsolu
                 </Link>
+                <Link className="admin-link" href="/live">
+                  ▶ Yayın ekranı
+                </Link>
                 <div className="hero-status-card">
                   <span className="hero-status-label">3D Rehber</span>
                   <strong>Avatar arayuze entegre edildi</strong>
@@ -135,7 +141,7 @@ export function HomeDashboard() {
               </div>
             </div>
             <div className="hero-avatar-panel">
-              <AvatarStage speechKey={latestAnswerKey} />
+              <AvatarStage speechKey={latestAnswerKey} speechText={latestAnswerText} />
               <div className="hero-avatar-caption">
                 <span className="hero-avatar-chip">Gogus Kadraj Avatar</span>
                 <p>
@@ -210,7 +216,7 @@ export function HomeDashboard() {
               type="submit"
               disabled={isPending || draft.trim().length < 5}
             >
-              {isPending ? "Gönderiliyor..." : "Soruyu gönder"}
+              {isPending ? "Gönderiliyor..." : "Kuyruğa al"}
             </button>
           </form>
           <p className="status-note">{note}</p>

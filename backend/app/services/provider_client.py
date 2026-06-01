@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from openai import OpenAI
 
@@ -14,8 +15,12 @@ class ProviderClientOptions:
     default_headers: dict[str, str] | None = None
 
 
-def resolve_provider_options(settings: Settings) -> ProviderClientOptions:
-    if settings.ai_provider == "openrouter":
+ProviderName = Literal["openai", "openrouter"]
+
+
+def resolve_provider_options(settings: Settings, provider: ProviderName | None = None) -> ProviderClientOptions:
+    selected_provider = provider or settings.ai_provider
+    if selected_provider == "openrouter":
         headers: dict[str, str] = {}
         if settings.openrouter_site_url:
             headers["HTTP-Referer"] = settings.openrouter_site_url
@@ -29,9 +34,12 @@ def resolve_provider_options(settings: Settings) -> ProviderClientOptions:
     return ProviderClientOptions(api_key=settings.openai_api_key)
 
 
-def create_openai_compatible_client(settings: Settings | None = None) -> OpenAI | None:
+def create_openai_compatible_client(
+    settings: Settings | None = None,
+    provider: ProviderName | None = None,
+) -> OpenAI | None:
     active_settings = settings or get_settings()
-    options = resolve_provider_options(active_settings)
+    options = resolve_provider_options(active_settings, provider)
     if not options.api_key:
         return None
 

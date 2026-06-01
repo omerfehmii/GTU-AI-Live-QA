@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -36,6 +37,17 @@ class YoutubeConnectRequest(BaseModel):
 class ManualQuestionRequest(BaseModel):
     content: str = Field(min_length=5, max_length=2000)
     author_name: str | None = Field(default="Demo kullanici", max_length=255)
+
+
+class AdminSettingsUpdate(BaseModel):
+    tts_enabled: bool | None = None
+
+
+class AdminSettingsRead(BaseModel):
+    tts_enabled: bool
+    tts_provider: str
+    tts_model: str
+    tts_voice: str
 
 
 class DocumentRead(BaseModel):
@@ -80,6 +92,9 @@ class AnswerRead(BaseModel):
     id: str
     content: str
     fallback_used: bool
+    audio_url: str | None
+    audio_duration_ms: int | None
+    audio_model_name: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -97,6 +112,16 @@ class QuestionRead(BaseModel):
     answer: AnswerRead | None = None
 
     model_config = {"from_attributes": True}
+
+
+class LiveStateRead(BaseModel):
+    avatar_state: Literal["idle", "listening", "thinking", "speaking", "error"]
+    current_question: QuestionRead | None
+    latest_answered: QuestionRead | None
+    queue: list[QuestionRead]
+    queue_size: int
+    active_streams: int
+    generated_at: datetime
 
 
 class IngestSummary(BaseModel):

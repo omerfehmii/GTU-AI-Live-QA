@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 
 import { createBasicAuthHeader, getJson, postForm, postJson } from "@/lib/api";
 import type {
+  AdminSettings,
   ArchiveCrawlSummary,
   ArchiveStats,
   DocumentItem,
@@ -83,6 +84,7 @@ export function AdminConsole() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [streams, setStreams] = useState<StreamSession[]>([]);
   const [archiveStats, setArchiveStats] = useState<ArchiveStats | null>(null);
+  const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
   const [status, setStatus] = useState("Admin işlemleri buradan yönetilir.");
   const [isPending, startTransition] = useTransition();
 
@@ -91,14 +93,16 @@ export function AdminConsole() {
   };
 
   async function refresh() {
-    const [documentData, streamData, archiveData] = await Promise.all([
+    const [documentData, streamData, archiveData, settingsData] = await Promise.all([
       getJson<DocumentItem[]>("/admin/documents", authHeader),
       getJson<StreamSession[]>("/streams", authHeader),
       getJson<ArchiveStats>("/admin/archive/stats", authHeader),
+      getJson<AdminSettings>("/admin/settings", authHeader),
     ]);
     setDocuments(documentData);
     setStreams(streamData);
     setArchiveStats(archiveData);
+    setAdminSettings(settingsData);
   }
 
   useEffect(() => {
@@ -221,6 +225,30 @@ export function AdminConsole() {
     });
   }
 
+  function handleTtsToggle(nextEnabled: boolean) {
+    const previousSettings = adminSettings;
+    if (previousSettings) {
+      setAdminSettings({ ...previousSettings, tts_enabled: nextEnabled });
+    }
+
+    startTransition(async () => {
+      try {
+        const updatedSettings = await postJson<AdminSettings>(
+          "/admin/settings",
+          { tts_enabled: nextEnabled },
+          authHeader,
+        );
+        setAdminSettings(updatedSettings);
+        setStatus(`TTS ${updatedSettings.tts_enabled ? "açıldı" : "kapatıldı"}. Yeni cevaplar bu ayara göre işlenecek.`);
+      } catch (error) {
+        if (previousSettings) {
+          setAdminSettings(previousSettings);
+        }
+        setStatus(error instanceof Error ? error.message : "TTS ayarı güncellenemedi.");
+      }
+    });
+  }
+
   function handleRebuild() {
     startTransition(async () => {
       try {
@@ -285,9 +313,14 @@ export function AdminConsole() {
                 ve index yenileme ihtiyacını karşılar.
               </p>
             </div>
-            <a className="admin-link" href="/">
-              ◀ Canlı görünüm
-            </a>
+            <div className="admin-hero-links">
+              <a className="admin-link" href="/">
+                ◀ Canlı görünüm
+              </a>
+              <a className="admin-link" href="/live">
+                ▶ Yayın ekranı
+              </a>
+            </div>
           </div>
         </div>
       </section>
@@ -351,8 +384,42 @@ export function AdminConsole() {
           </button>
         </div>
 
-        {/* PDF Upload */}
+        {/* TTS */}
         <div className="panel animate-in animate-in-delay-3">
+          <div className="panel-head">
+            <h2>Yayın Sesi</h2>
+            <span className={`live-chip ${adminSettings?.tts_enabled ? "" : "live-chip-muted"}`}>
+              {adminSettings?.tts_enabled ? "TTS açık" : "TTS kapalı"}
+            </span>
+          </div>
+          <button
+            className={`toggle-card ${adminSettings?.tts_enabled ? "is-on" : ""}`}
+            type="button"
+            role="switch"
+            aria-checked={adminSettings?.tts_enabled ?? false}
+            disabled={isPending || !adminSettings}
+            onClick={() => handleTtsToggle(!(adminSettings?.tts_enabled ?? false))}
+          >
+            <span className="toggle-track">
+              <span className="toggle-knob" />
+            </span>
+            <span className="toggle-copy">
+              <strong>Sesli cevap üretimi</strong>
+              <span>Kapalıyken yeni yanıtlar sadece metin olarak yayına girer.</span>
+            </span>
+          </button>
+          <div className="settings-meta-grid">
+            <span>Provider</span>
+            <strong>{adminSettings?.tts_provider ?? "-"}</strong>
+            <span>Model</span>
+            <strong>{adminSettings?.tts_model ?? "-"}</strong>
+            <span>Ses</span>
+            <strong>{adminSettings?.tts_voice ?? "-"}</strong>
+          </div>
+        </div>
+
+        {/* PDF Upload */}
+        <div className="panel animate-in animate-in-delay-4">
           <div className="panel-head">
             <h2>📄 PDF Ingest</h2>
             <span className="subtle-note">Yönerge, kılavuz, takvim</span>
@@ -374,7 +441,7 @@ export function AdminConsole() {
         </div>
 
         {/* Archive Stats */}
-        <div className="panel animate-in animate-in-delay-4">
+        <div className="panel animate-in animate-in-delay-5">
           <div className="panel-head">
             <h2>📊 Arşiv İstatistikleri</h2>
           </div>

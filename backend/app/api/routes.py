@@ -10,12 +10,15 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db import get_db
 from app.schemas import (
+    AdminSettingsRead,
+    AdminSettingsUpdate,
     ArchiveCrawlSummary,
     ArchiveIndexRequest,
     ArchiveStatsRead,
     DocumentRead,
     IndexRebuildRequest,
     IngestSummary,
+    LiveStateRead,
     ManualQuestionRequest,
     MetricsRead,
     QuestionRead,
@@ -25,6 +28,7 @@ from app.schemas import (
 )
 from app.services.ingest import IngestService
 from app.services.rag import RagService
+from app.services.runtime_settings import RuntimeSettingsService
 from app.services.youtube import YouTubeService
 
 router = APIRouter()
@@ -62,10 +66,23 @@ def create_manual_question(payload: ManualQuestionRequest, db: Session = Depends
     return service.serialize_question(question)
 
 
+@router.post("/questions/manual/queue", response_model=QuestionRead)
+def enqueue_manual_question(payload: ManualQuestionRequest, db: Session = Depends(get_db)) -> QuestionRead:
+    service = RagService(db)
+    question = service.enqueue_manual_question(payload.content, payload.author_name)
+    return service.serialize_question(question)
+
+
 @router.get("/metrics", response_model=MetricsRead)
 def get_metrics(db: Session = Depends(get_db)) -> MetricsRead:
     service = RagService(db)
     return service.metrics()
+
+
+@router.get("/live/state", response_model=LiveStateRead)
+def get_live_state(db: Session = Depends(get_db)) -> LiveStateRead:
+    service = RagService(db)
+    return service.live_state()
 
 
 @router.get("/streams", response_model=list[StreamSessionRead])
@@ -75,6 +92,25 @@ def list_streams(
 ) -> list[StreamSessionRead]:
     service = RagService(db)
     return [StreamSessionRead.model_validate(stream) for stream in service.list_streams()]
+
+
+@router.get("/admin/settings", response_model=AdminSettingsRead)
+def get_admin_settings(
+    _: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminSettingsRead:
+    service = RuntimeSettingsService(db)
+    return service.read()
+
+
+@router.post("/admin/settings", response_model=AdminSettingsRead)
+def update_admin_settings(
+    payload: AdminSettingsUpdate,
+    _: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminSettingsRead:
+    service = RuntimeSettingsService(db)
+    return service.update(payload)
 
 
 @router.post("/streams/youtube/connect", response_model=StreamSessionRead)

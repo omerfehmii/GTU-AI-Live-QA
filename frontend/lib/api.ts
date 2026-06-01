@@ -13,6 +13,23 @@ export function createBasicAuthHeader(username: string, password: string): strin
   return `Basic ${encoded}`;
 }
 
+export function resolveBackendAssetUrl(path?: string | null): string | null {
+  if (!path) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  try {
+    return `${new URL(API_BASE_URL).origin}${normalizedPath}`;
+  } catch {
+    return normalizedPath;
+  }
+}
+
 export async function getJson<T>(path: string, headers?: HeadersInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers,

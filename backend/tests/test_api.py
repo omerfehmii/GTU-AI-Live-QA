@@ -4,6 +4,7 @@ import base64
 import os
 import shutil
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -20,12 +21,13 @@ os.environ["AI_EMBEDDING_MODEL"] = ""
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["YOUTUBE_API_KEY"] = "demo"
 os.environ["OPENROUTER_API_KEY"] = ""
+os.environ["TTS_ENABLED"] = "true"
 
 from fastapi.testclient import TestClient
 
 from app.db import SessionLocal, init_db
 from app.main import app
-from app.models import AnswerTrace, Chunk, Document, Question, SourceType
+from app.models import Answer, AnswerTrace, Chunk, Document, Question, QuestionStatus, SourceType
 from app.services.embeddings import EmbeddingService
 from app.services.ingest import IngestService, ParsedDocument
 from app.services.llm import LLMService
@@ -104,6 +106,133 @@ def test_ingest_and_manual_question(monkeypatch) -> None:
     metrics_response = client.get("/api/metrics")
     assert metrics_response.status_code == 200
     assert metrics_response.json()["questions_answered"] >= 1
+
+
+def test_manual_queue_feeds_live_state() -> None:
+    client = TestClient(app)
+    queue_response = client.post(
+        "/api/questions/manual/queue",
+        json={"content": "Yayin kuyrugu test sorusu nasil gorunur?", "author_name": "Queue Test"},
+    )
+    assert queue_response.status_code == 200
+    queued_question = queue_response.json()
+    assert queued_question["status"] == "pending"
+
+    live_response = client.get("/api/live/state")
+    assert live_response.status_code == 200
+    live_body = live_response.json()
+    assert live_body["queue_size"] >= 1
+    assert any(question["id"] == queued_question["id"] for question in live_body["queue"])
+
+
+def test_live_state_holds_recent_answer_before_next_question() -> None:
+    with SessionLocal() as db:
+        for answer in db.scalars(select(Answer)).all():
+            answer.created_at = datetime.now(UTC) - timedelta(days=1)
+
+        answered_question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Speaker",
+            content="Cevabi henuz bitmeyen soru",
+            normalized_content="cevabi henuz bitmeyen soru",
+            status=QuestionStatus.ANSWERED,
+        )
+        db.add(answered_question)
+        db.flush()
+        db.add(
+            Answer(
+                question_id=answered_question.id,
+                content="Bu cevap yayinda sonuna kadar okunmali.",
+                model_name="test",
+                latency_ms=10,
+                fallback_used=False,
+                audio_duration_ms=8000,
+                created_at=datetime.now(UTC),
+            )
+        )
+        processing_question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Next",
+            content="Siradaki soru",
+            normalized_content="siradaki soru",
+            status=QuestionStatus.PROCESSING,
+        )
+        db.add(processing_question)
+        db.commit()
+
+        live_state = RagService(db).live_state()
+
+    assert live_state.avatar_state == "speaking"
+    assert live_state.current_question
+    assert live_state.current_question.id == answered_question.id
+    assert live_state.latest_answered
+    assert live_state.latest_answered.id == answered_question.id
+
+
+def test_live_state_keeps_answer_visible_during_handoff_pause() -> None:
+    with SessionLocal() as db:
+        for answer in db.scalars(select(Answer)).all():
+            answer.created_at = datetime.now(UTC) - timedelta(days=1)
+
+        answered_question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Speaker",
+            content="Yeni bitmis cevap sorusu",
+            normalized_content="yeni bitmis cevap sorusu",
+            status=QuestionStatus.ANSWERED,
+        )
+        db.add(answered_question)
+        db.flush()
+        db.add(
+            Answer(
+                question_id=answered_question.id,
+                content="Bu cevap yeni bitti ve kisa sure ekranda kalmali.",
+                model_name="test",
+                latency_ms=10,
+                fallback_used=False,
+                audio_duration_ms=8000,
+                created_at=datetime.now(UTC) - timedelta(seconds=8.5),
+            )
+        )
+        processing_question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Next",
+            content="Hemen gorunmemesi gereken soru",
+            normalized_content="hemen gorunmemesi gereken soru",
+            status=QuestionStatus.PROCESSING,
+        )
+        db.add(processing_question)
+        db.commit()
+
+        live_state = RagService(db).live_state()
+
+    assert live_state.avatar_state == "thinking"
+    assert live_state.current_question
+    assert live_state.current_question.id == answered_question.id
+
+
+def test_admin_can_toggle_tts_setting() -> None:
+    client = TestClient(app)
+
+    settings_response = client.get("/api/admin/settings", headers=admin_headers())
+    assert settings_response.status_code == 200
+    assert settings_response.json()["tts_enabled"] is True
+
+    disabled_response = client.post(
+        "/api/admin/settings",
+        headers=admin_headers(),
+        json={"tts_enabled": False},
+    )
+    assert disabled_response.status_code == 200
+    assert disabled_response.json()["tts_enabled"] is False
+
+    enabled_response = client.post(
+        "/api/admin/settings",
+        headers=admin_headers(),
+        json={"tts_enabled": True},
+    )
+    assert enabled_response.status_code == 200
+    assert enabled_response.json()["tts_enabled"] is True
 
 
 def test_ingest_accepts_remote_pdf_urls(monkeypatch) -> None:
@@ -274,7 +403,7 @@ def test_llm_replaces_context_refusal_with_local_summary() -> None:
     assert "verilen baglamda" in answer.lower()
 
 
-def test_llm_without_provider_uses_local_summary_without_fallback_flag() -> None:
+def test_llm_without_provider_marks_local_summary_as_fallback() -> None:
     service = LLMService()
     service.client = None
     answer, model_name, fallback_used = service.answer(
@@ -284,7 +413,7 @@ def test_llm_without_provider_uses_local_summary_without_fallback_flag() -> None
             "Icerik: Hazirlik bolumu egitimi bir sene surmektedir."
         ],
     )
-    assert fallback_used is False
+    assert fallback_used is True
     assert model_name == "local-summary"
     assert "bir sene" in answer.lower()
 
