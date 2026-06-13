@@ -40,6 +40,33 @@ class StreamStatus(str, Enum):
     ERROR = "error"
 
 
+class SpeechJobKind(str, Enum):
+    ANSWER = "answer"
+    AMBIENT = "ambient"
+    TRANSITION = "transition"
+
+
+class SpeechJobStatus(str, Enum):
+    PENDING = "pending"
+    GENERATING = "generating"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class BroadcastSegmentStatus(str, Enum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class PlaybackItemKind(str, Enum):
+    IDLE = "idle"
+    AMBIENT = "ambient"
+    ANSWER = "answer"
+    TRANSITION = "transition"
+    QUEUE_WAIT = "queue_wait"
+    ERROR = "error"
+
+
 def timestamp() -> datetime:
     return datetime.now(UTC)
 
@@ -130,6 +157,7 @@ class Answer(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     question_id: Mapped[str] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), unique=True, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    speech_content: Mapped[str | None] = mapped_column(Text)
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
@@ -142,6 +170,11 @@ class Answer(Base):
 
     question: Mapped[Question] = relationship(back_populates="answer")
     traces: Mapped[list["AnswerTrace"]] = relationship(back_populates="answer", cascade="all, delete-orphan")
+    speech_job: Mapped["SpeechJob | None"] = relationship(
+        back_populates="answer",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class AnswerTrace(Base):
@@ -159,3 +192,74 @@ class AnswerTrace(Base):
 
     answer: Mapped[Answer] = relationship(back_populates="traces")
     chunk: Mapped[Chunk] = relationship(back_populates="traces")
+
+
+class BroadcastSegment(Base):
+    __tablename__ = "broadcast_segments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[BroadcastSegmentStatus] = mapped_column(
+        SqlEnum(BroadcastSegmentStatus),
+        default=BroadcastSegmentStatus.ACTIVE,
+        nullable=False,
+    )
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=45)
+    last_played_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    play_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp, onupdate=timestamp)
+
+    speech_jobs: Mapped[list["SpeechJob"]] = relationship(back_populates="segment")
+
+
+class SpeechJob(Base):
+    __tablename__ = "speech_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    kind: Mapped[SpeechJobKind] = mapped_column(SqlEnum(SpeechJobKind), nullable=False)
+    status: Mapped[SpeechJobStatus] = mapped_column(
+        SqlEnum(SpeechJobStatus),
+        default=SpeechJobStatus.PENDING,
+        nullable=False,
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    cache_key: Mapped[str] = mapped_column(String(96), nullable=False)
+    answer_id: Mapped[str | None] = mapped_column(ForeignKey("answers.id", ondelete="CASCADE"), unique=True)
+    segment_id: Mapped[str | None] = mapped_column(ForeignKey("broadcast_segments.id", ondelete="SET NULL"))
+    audio_url: Mapped[str | None] = mapped_column(String(1000))
+    audio_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    audio_model_name: Mapped[str | None] = mapped_column(String(255))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp, onupdate=timestamp)
+
+    answer: Mapped[Answer | None] = relationship(back_populates="speech_job")
+    segment: Mapped[BroadcastSegment | None] = relationship(back_populates="speech_jobs")
+
+
+class BroadcastPlayback(Base):
+    __tablename__ = "broadcast_playback"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True, default="global")
+    kind: Mapped[PlaybackItemKind] = mapped_column(
+        SqlEnum(PlaybackItemKind),
+        default=PlaybackItemKind.IDLE,
+        nullable=False,
+    )
+    phase: Mapped[str] = mapped_column(String(64), default="idle", nullable=False)
+    question_id: Mapped[str | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))
+    answer_id: Mapped[str | None] = mapped_column(ForeignKey("answers.id", ondelete="SET NULL"))
+    segment_id: Mapped[str | None] = mapped_column(ForeignKey("broadcast_segments.id", ondelete="SET NULL"))
+    speech_job_id: Mapped[str | None] = mapped_column(ForeignKey("speech_jobs.id", ondelete="SET NULL"))
+    last_answer_id: Mapped[str | None] = mapped_column(ForeignKey("answers.id", ondelete="SET NULL"))
+    last_answer_played_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
+    expected_end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
+    can_interrupt_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
+    max_interrupt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=timestamp, onupdate=timestamp)

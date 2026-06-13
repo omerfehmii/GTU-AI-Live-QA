@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import get_settings
 from app.models import Answer, AnswerTrace, Chunk, Document, Question, QuestionStatus, SourceType, StreamSession, StreamStatus
 from app.schemas import LiveStateRead, MetricsRead, QuestionRead
+from app.services.broadcast import BroadcastService
 from app.services.chunker import normalize_text, tokenize
 from app.services.embeddings import EmbeddingService
-from app.services.llm import LLMService
-from app.services.tts import TTSService
+from app.services.llm import AnswerDraft, LLMService
+from app.services.speech import SpeechService
 
 
 @dataclass
@@ -41,7 +42,7 @@ class RagService:
         self.settings = get_settings()
         self.embedding_service = EmbeddingService()
         self.llm_service = LLMService()
-        self.tts_service = TTSService(db=self.db)
+        self.speech_service = SpeechService(db=self.db)
 
     def ask_manual_question(self, content: str, author_name: str | None = None) -> Question:
         question = self.enqueue_manual_question(content, author_name)
@@ -106,15 +107,23 @@ class RagService:
             ]
             contexts = candidate_contexts if self._should_use_contexts(retrieved, candidate_contexts) else []
             confidence = retrieved[0].final_score if retrieved else 0.0
-            answer_text, model_name, fallback_used = self.llm_service.answer(
-                question.content,
-                contexts,
+            answer_draft = self._coerce_answer_draft(
+                self.llm_service.answer(
+                    question.content,
+                    contexts,
+                )
             )
+
+            answer_text = answer_draft.display_text
+            speech_text = answer_draft.speech_text or answer_draft.display_text
+            model_name = answer_draft.model_name
+            fallback_used = answer_draft.fallback_used
 
             latency_ms = int((time.perf_counter() - start) * 1000)
             answer = Answer(
                 question_id=question.id,
                 content=answer_text,
+                speech_content=speech_text,
                 model_name=model_name,
                 latency_ms=latency_ms,
                 confidence=confidence,
@@ -135,7 +144,7 @@ class RagService:
                         final_score=item.final_score,
                     )
                 )
-            self.tts_service.synthesize_answer(answer)
+            self.speech_service.enqueue_answer(answer)
             answer.created_at = datetime.now(UTC)
             question.status = QuestionStatus.ANSWERED
             question.error_message = None
@@ -168,6 +177,17 @@ class RagService:
                 pass
             processed += 1
         return processed
+
+    def _coerce_answer_draft(self, result: AnswerDraft | tuple[str, str, bool]) -> AnswerDraft:
+        if isinstance(result, AnswerDraft):
+            return result
+        display_text, model_name, fallback_used = result
+        return AnswerDraft(
+            display_text=display_text,
+            speech_text=display_text,
+            model_name=model_name,
+            fallback_used=fallback_used,
+        )
 
     def retrieve(self, query: str) -> list[RetrievedChunk]:
         normalized = normalize_text(query).lower()
@@ -212,74 +232,7 @@ class RagService:
         return self.db.scalars(statement).unique().all()
 
     def live_state(self, queue_limit: int = 6) -> LiveStateRead:
-        queue_statement = (
-            select(Question)
-            .options(joinedload(Question.answer).joinedload(Answer.traces))
-            .where(Question.status.in_([QuestionStatus.PENDING, QuestionStatus.PROCESSING]))
-            .order_by(Question.created_at.asc())
-            .limit(queue_limit)
-        )
-        queue = self.db.scalars(queue_statement).unique().all()
-        processing = next((question for question in queue if question.status == QuestionStatus.PROCESSING), None)
-        pending = next((question for question in queue if question.status == QuestionStatus.PENDING), None)
-        queue_size = self.db.scalar(
-            select(func.count(Question.id)).where(Question.status.in_([QuestionStatus.PENDING, QuestionStatus.PROCESSING]))
-        ) or 0
-
-        latest_answered = self.db.scalar(
-            select(Question)
-            .join(Answer)
-            .options(joinedload(Question.answer).joinedload(Answer.traces))
-            .where(Question.status == QuestionStatus.ANSWERED)
-            .order_by(Answer.created_at.desc())
-            .limit(1)
-        )
-        latest_failed = self.db.scalar(
-            select(Question)
-            .where(Question.status == QuestionStatus.FAILED)
-            .order_by(Question.updated_at.desc())
-            .limit(1)
-        )
-        active_streams = self.db.scalar(
-            select(func.count(StreamSession.id)).where(StreamSession.status == StreamStatus.CONNECTED)
-        ) or 0
-
-        now = datetime.now(UTC)
-        recent_error = bool(
-            latest_failed and latest_failed.updated_at and self._seconds_since(now, latest_failed.updated_at) < 12
-        )
-        answer_age_seconds = (
-            self._seconds_since(now, latest_answered.answer.created_at)
-            if latest_answered and latest_answered.answer
-            else None
-        )
-        answer_speech_seconds = self._answer_speech_seconds(latest_answered.answer) if latest_answered and latest_answered.answer else 0
-        recent_answer_speaking = answer_age_seconds is not None and answer_age_seconds < answer_speech_seconds
-        recent_answer_handoff = (
-            answer_age_seconds is not None
-            and answer_age_seconds < self._speech_window_seconds(latest_answered.answer)
-        )
-
-        avatar_state = "idle"
-        if recent_answer_speaking:
-            avatar_state = "speaking"
-        elif processing:
-            avatar_state = "thinking"
-        elif recent_error:
-            avatar_state = "error"
-        elif pending:
-            avatar_state = "listening"
-
-        current_question = latest_answered if recent_answer_handoff else processing or pending or latest_answered
-        return LiveStateRead(
-            avatar_state=avatar_state,
-            current_question=QuestionRead.model_validate(current_question) if current_question else None,
-            latest_answered=QuestionRead.model_validate(latest_answered) if latest_answered else None,
-            queue=[QuestionRead.model_validate(question) for question in queue],
-            queue_size=int(queue_size),
-            active_streams=int(active_streams),
-            generated_at=now,
-        )
+        return BroadcastService(self.db).live_state(queue_limit=queue_limit)
 
     def _speech_window_seconds(self, answer: Answer) -> float:
         handoff_pause_seconds = 2.0

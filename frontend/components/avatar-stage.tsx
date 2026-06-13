@@ -53,6 +53,9 @@ const AVATAR_VIEWS = {
   },
 } as const;
 
+const SPEECH_MOUTH_GAIN = 1.24;
+const SPEECH_PULSE_GAIN = 1.42;
+
 type PreparedAvatar = {
   scene: Object3D;
   scale: number;
@@ -307,6 +310,11 @@ function AvatarModel({
 }) {
   const root = useRef<Group>(null);
   const speakingStartedAt = useRef(0);
+  const lipSyncState = useRef({
+    lastEnergyAt: 0,
+    level: 0,
+    meterSeen: false,
+  });
   const sourceModel = useLoader(FBXLoader, MODEL_PATH, (loader) => {
     loader.setResourcePath(MODEL_TEXTURE_PATH);
   });
@@ -391,6 +399,11 @@ function AvatarModel({
   useEffect(() => {
     if (avatarState === "speaking") {
       speakingStartedAt.current = performance.now();
+      lipSyncState.current = {
+        lastEnergyAt: performance.now(),
+        level: 0,
+        meterSeen: false,
+      };
     }
   }, [avatarState, speechKey]);
 
@@ -418,20 +431,45 @@ function AvatarModel({
     }
 
     const elapsed = state.clock.elapsedTime;
+    const now = performance.now();
     const speaking = (useLocalSpeech && performance.now() < speakingUntil.current) || avatarState === "speaking";
     const thinking = avatarState === "thinking";
     const error = avatarState === "error";
-    const audioLevel = MathUtils.clamp(audioLevelRef?.current ?? 0, 0, 1);
-    const fallbackLevel = speaking ? 0.16 + visemeCycleFromTime(elapsed, 8.7, 0) * 0.42 : 0;
-    const speechLevel = speaking ? MathUtils.clamp(Math.max(audioLevel, audioLevel > 0.03 ? fallbackLevel * 0.3 : fallbackLevel), 0, 1) : 0;
+    const rawAudioLevel = MathUtils.clamp(audioLevelRef?.current ?? 0, 0, 1);
+    const audioPlaying = Boolean(audioPlaybackRef?.current?.isPlaying);
+    const fallbackLevel = speaking ? 0.24 + visemeCycleFromTime(elapsed, 8.7, 0) * 0.5 : 0;
+    const lipSync = lipSyncState.current;
+
+    if (!speaking) {
+      lipSync.level = MathUtils.lerp(lipSync.level, 0, 0.28);
+      lipSync.meterSeen = false;
+      lipSync.lastEnergyAt = now;
+    } else if (rawAudioLevel > 0.018) {
+      lipSync.meterSeen = true;
+      lipSync.lastEnergyAt = now;
+    }
+
+    const recentlyVoiced = now - lipSync.lastEnergyAt < 180;
+    const fallbackWeight = audioPlaying && lipSync.meterSeen ? (recentlyVoiced ? 0.26 : 0.08) : 1;
+    const targetSpeechLevel = speaking
+      ? MathUtils.clamp(Math.max(rawAudioLevel, fallbackLevel * fallbackWeight), 0, 1)
+      : 0;
+    const levelEasing = targetSpeechLevel > lipSync.level ? 0.58 : 0.22;
+    lipSync.level = MathUtils.lerp(lipSync.level, targetSpeechLevel, levelEasing);
+    const speechLevel = lipSync.level;
     const speechProgress = getSpeechProgress({
       audioPlayback: audioPlaybackRef?.current,
-      elapsedMs: performance.now() - speakingStartedAt.current,
+      elapsedMs: now - speakingStartedAt.current,
       fallbackDurationMs: estimatedDurationMs,
       speaking,
     });
     const visemeTargets = getVisemeTargets(visemeTimeline, speechProgress, speechLevel);
-    const idleYaw = Math.sin(elapsed * 0.55) * (thinking ? 0.04 : 0.08);
+    const syllablePulse = speaking
+      ? Math.pow(visemeCycleFromTime(elapsed, 12.8, speechProgress * 34), 1.55) *
+        (0.3 + speechLevel * 0.8) *
+        SPEECH_PULSE_GAIN
+      : 0;
+    const idleYaw = thinking ? Math.sin(elapsed * 0.55) * 0.012 : 0;
     const idlePitch = Math.sin(elapsed * 0.35) * (thinking ? 0.06 : 0.03);
     const thinkingBob = thinking ? Math.sin(elapsed * 3.4) * 0.018 : 0;
     const baseY = view.targetEyeLine - (prepared.eyeHeight * prepared.scale);
@@ -449,75 +487,131 @@ function AvatarModel({
     );
     root.current.position.z = MathUtils.lerp(root.current.position.z, 0, 0.08);
 
-    const speechGesture = speaking ? MathUtils.clamp(0.25 + speechLevel * 0.75, 0, 1) : 0;
+    const speechGesture = speaking ? MathUtils.clamp(0.3 + speechLevel * 0.8, 0, 1) : 0;
     if (headBone) {
       headBone.rotation.x = MathUtils.lerp(
         headBone.rotation.x,
-        headRestRotation.x + Math.sin(elapsed * 2.3) * 0.012 * speechGesture - 0.006 * speechGesture,
+        headRestRotation.x + Math.sin(elapsed * 2.3) * 0.021 * speechGesture - 0.012 * speechGesture,
         0.08,
       );
       headBone.rotation.y = MathUtils.lerp(
         headBone.rotation.y,
-        headRestRotation.y + Math.sin(elapsed * 1.7 + 0.8) * 0.018 * speechGesture,
+        headRestRotation.y,
         0.08,
       );
       headBone.rotation.z = MathUtils.lerp(
         headBone.rotation.z,
-        headRestRotation.z + Math.sin(elapsed * 2.0 + 1.7) * 0.01 * speechGesture,
+        headRestRotation.z,
         0.08,
       );
     }
     if (neckBone) {
       neckBone.rotation.x = MathUtils.lerp(
         neckBone.rotation.x,
-        neckRestRotation.x + Math.sin(elapsed * 1.5 + 1.1) * 0.006 * speechGesture,
+        neckRestRotation.x + Math.sin(elapsed * 1.5 + 1.1) * 0.01 * speechGesture,
         0.06,
       );
       neckBone.rotation.y = MathUtils.lerp(
         neckBone.rotation.y,
-        neckRestRotation.y + Math.sin(elapsed * 1.2 + 0.4) * 0.008 * speechGesture,
+        neckRestRotation.y,
         0.06,
       );
     }
 
     const blink = Math.max(0, Math.sin(elapsed * 0.8 + blinkSeed.current) - 0.94) * 14;
-    const mouthOpenTarget = speaking ? visemeTargets.open : 0.015;
-    const lipPartTarget = speaking ? visemeTargets.lipPart : 0;
-    const roundTarget = speaking ? visemeTargets.round : 0;
-    const wideTarget = speaking ? visemeTargets.wide : 0;
-    const closeTarget = speaking ? visemeTargets.close : 0.08;
-
+    const consonantClosure = Math.max(
+      visemeTargets.close,
+      visemeTargets.plosive * 0.9,
+      visemeTargets.dental * 0.35,
+    );
+    const mouthOpenTarget = speaking
+      ? MathUtils.clamp(
+          visemeTargets.open * SPEECH_MOUTH_GAIN + syllablePulse * 0.16 - consonantClosure * 0.04,
+          0,
+          0.96,
+        )
+      : 0.015;
+    const lipPartTarget = speaking
+      ? MathUtils.clamp(visemeTargets.lipPart * 1.18 + syllablePulse * 0.14 - visemeTargets.plosive * 0.16, 0, 0.92)
+      : 0;
+    const roundTarget = speaking ? MathUtils.clamp(visemeTargets.round * 1.12 + syllablePulse * 0.07, 0, 0.92) : 0;
+    const wideTarget = speaking ? MathUtils.clamp(visemeTargets.wide * 1.1 + syllablePulse * 0.055, 0, 0.8) : 0;
+    const closeTarget = speaking ? MathUtils.clamp(consonantClosure * 0.78 - mouthOpenTarget * 0.12, 0, 0.68) : 0;
+    const plosiveTarget = speaking ? MathUtils.clamp(visemeTargets.plosive * 0.92, 0, 0.76) : 0;
+    const dentalTarget = speaking ? MathUtils.clamp(visemeTargets.dental * 0.86, 0, 0.72) : 0;
+    const bottomLipDownTarget = speaking ? MathUtils.clamp(mouthOpenTarget * 0.42 + lipPartTarget * 0.28, 0, 0.64) : 0;
+    const topLipUpTarget = speaking ? MathUtils.clamp(mouthOpenTarget * 0.18 + lipPartTarget * 0.12, 0, 0.32) : 0;
     for (const mesh of morphMeshes) {
       dampInfluence(mesh, ["eyeBlinkLeft", "Eye_Blink_L"], blink);
       dampInfluence(mesh, ["eyeBlinkRight", "Eye_Blink_R"], blink);
       dampInfluence(mesh, ["eyesClosed", "Eye_Blink"], blink * 0.65);
-      dampInfluence(mesh, ["mouthSmile", "Mouth_Smile"], speaking ? 0.05 + speechLevel * 0.05 : error ? 0 : 0.06, 0.12);
-      dampInfluence(mesh, ["mouthSmileLeft", "Mouth_Smile_L"], speaking ? 0.04 + speechLevel * 0.04 : 0.035, 0.12);
-      dampInfluence(mesh, ["mouthSmileRight", "Mouth_Smile_R"], speaking ? 0.04 + speechLevel * 0.04 : 0.035, 0.12);
       dampInfluence(
         mesh,
-        ["jawOpen", "Mouth_Lips_Jaw_Adjust", "Mouth_Open", "Lip_Open"],
+        ["mouthSmile", "Mouth_Smile"],
+        0,
+        0.12,
+      );
+      dampInfluence(
+        mesh,
+        ["mouthSmileLeft", "Mouth_Smile_L"],
+        0,
+        0.12,
+      );
+      dampInfluence(
+        mesh,
+        ["mouthSmileRight", "Mouth_Smile_R"],
+        0,
+        0.12,
+      );
+      dampInfluence(
+        mesh,
+        ["jawOpen", "Jaw_Open", "Mouth_Jaw_Open", "Mouth_Open", "Open", "Lip_Open"],
         mouthOpenTarget,
-        0.22,
+        0.32,
       );
       dampInfluence(
         mesh,
         ["mouthOpen", "Mouth_Lips_Open", "Mouth_Open", "Open"],
         mouthOpenTarget * 0.85,
-        0.24,
+        0.34,
       );
-      dampInfluence(mesh, ["mouthClose", "Mouth_Lips_Tight", "Tight"], closeTarget, 0.18);
-      dampInfluence(mesh, ["viseme_aa", "Mouth_Lips_Part", "Open", "Wide"], lipPartTarget, 0.26);
-      dampInfluence(mesh, ["viseme_O", "Tight_O", "Mouth_Pucker_Open", "Mouth_Pucker"], roundTarget, 0.2);
-      dampInfluence(mesh, ["viseme_I", "Mouth_Widen", "Mouth_Widen_Sides", "Wide"], wideTarget, 0.18);
-      dampInfluence(mesh, ["viseme_PP", "Explosive", "Mouth_Plosive"], visemeTargets.plosive, 0.3);
-      dampInfluence(mesh, ["viseme_FF", "Dental_Lip", "Affricate"], visemeTargets.dental, 0.22);
-      dampInfluence(mesh, ["viseme_sil", "Mouth_Lips_Tuck"], speaking ? 0.01 : 0.04, 0.16);
+      dampInfluence(mesh, ["mouthClose", "Mouth_Lips_Tight", "Tight"], closeTarget, 0.3);
+      dampInfluence(mesh, ["viseme_aa", "Mouth_Lips_Part", "Open", "Wide"], lipPartTarget, 0.34);
+      dampInfluence(mesh, ["viseme_O", "Tight_O", "Mouth_Pucker_Open", "Mouth_Pucker"], roundTarget, 0.28);
+      dampInfluence(mesh, ["viseme_I", "Mouth_Widen", "Mouth_Widen_Sides", "Wide"], wideTarget, 0.24);
+      dampInfluence(mesh, ["viseme_PP", "Explosive", "Mouth_Plosive"], plosiveTarget, 0.36);
+      dampInfluence(mesh, ["viseme_FF", "Dental_Lip", "Affricate"], dentalTarget, 0.34);
+      dampInfluence(mesh, ["viseme_sil", "Mouth_Lips_Tuck"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_Blow"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_Lips_Jaw_Adjust"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_Bottom_Lip_Down", "Bottom_Lip_Down"], bottomLipDownTarget, 0.3);
+      dampInfluence(mesh, ["Mouth_Top_Lip_Up", "Top_Lip_Up"], topLipUpTarget, 0.28);
+      dampInfluence(mesh, ["Mouth_Down"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_Up"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_L"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_R"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_Bottom_Lip_Bite", "Mouth_Top_Lip_Under"], 0, 0.34);
+      dampInfluence(mesh, ["Mouth_Bottom_Lip_Trans", "Mouth_Skewer"], 0, 0.34);
+      dampInfluence(
+        mesh,
+        ["Mouth_Snarl_Upper_L", "Mouth_Snarl_Upper_R", "Mouth_Snarl_Lower_L", "Mouth_Snarl_Lower_R"],
+        0,
+        0.34,
+      );
+      dampInfluence(mesh, ["Tongue_up", "Tongue_Raise"], 0, 0.34);
     }
 
-    if (jawBone && morphMeshes.length === 0) {
-      const jawOpen = speaking ? speechLevel * 0.18 : 0;
-      jawBone.rotation.x = MathUtils.lerp(jawBone.rotation.x, jawRestRotation.x + jawOpen, 0.22);
+    if (jawBone) {
+      const jawOpen = speaking && morphMeshes.length === 0
+        ? MathUtils.clamp(
+            mouthOpenTarget * 0.15 + lipPartTarget * 0.035 + speechLevel * 0.025,
+            0,
+            0.16,
+          )
+        : 0;
+      jawBone.rotation.x = MathUtils.lerp(jawBone.rotation.x, jawRestRotation.x + jawOpen, 0.2);
+      jawBone.rotation.y = MathUtils.lerp(jawBone.rotation.y, jawRestRotation.y, 0.2);
+      jawBone.rotation.z = MathUtils.lerp(jawBone.rotation.z, jawRestRotation.z, 0.2);
     }
   });
 

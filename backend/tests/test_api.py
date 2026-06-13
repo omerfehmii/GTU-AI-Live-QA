@@ -25,13 +25,30 @@ os.environ["TTS_ENABLED"] = "true"
 
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
 from app.db import SessionLocal, init_db
 from app.main import app
-from app.models import Answer, AnswerTrace, Chunk, Document, Question, QuestionStatus, SourceType
+from app.models import (
+    Answer,
+    AnswerTrace,
+    BroadcastPlayback,
+    BroadcastSegment,
+    Chunk,
+    Document,
+    PlaybackItemKind,
+    Question,
+    QuestionStatus,
+    SpeechJob,
+    SpeechJobKind,
+    SpeechJobStatus,
+    SourceType,
+)
 from app.services.embeddings import EmbeddingService
+from app.services.broadcast import BroadcastService, DEFAULT_AMBIENT_SEGMENTS
 from app.services.ingest import IngestService, ParsedDocument
 from app.services.llm import LLMService
 from app.services.rag import RagService, RetrievedChunk
+from app.services.speech import SpeechService
 from app.services.youtube import YouTubeService
 
 
@@ -125,8 +142,36 @@ def test_manual_queue_feeds_live_state() -> None:
     assert any(question["id"] == queued_question["id"] for question in live_body["queue"])
 
 
+def test_live_state_does_not_promote_pending_question_to_stage() -> None:
+    with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(BroadcastSegment).delete()
+        for answer in db.scalars(select(Answer)).all():
+            answer.created_at = datetime.now(UTC) - timedelta(days=1)
+
+        queued_question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Queue",
+            content="Bu soru sirada kalmali",
+            normalized_content="bu soru sirada kalmali",
+            status=QuestionStatus.PENDING,
+        )
+        db.add(queued_question)
+        db.commit()
+
+        live_state = RagService(db).live_state()
+
+    assert live_state.playback_item
+    assert live_state.playback_item.kind == "ambient"
+    assert live_state.current_phase == "queue_mode"
+    assert live_state.current_question is None
+    assert any(question.id == queued_question.id for question in live_state.queue)
+
+
 def test_live_state_holds_recent_answer_before_next_question() -> None:
     with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(BroadcastSegment).delete()
         for answer in db.scalars(select(Answer)).all():
             answer.created_at = datetime.now(UTC) - timedelta(days=1)
 
@@ -163,16 +208,40 @@ def test_live_state_holds_recent_answer_before_next_question() -> None:
         live_state = RagService(db).live_state()
 
     assert live_state.avatar_state == "speaking"
+    assert live_state.playback_item
+    assert live_state.playback_item.kind == "answer"
     assert live_state.current_question
     assert live_state.current_question.id == answered_question.id
     assert live_state.latest_answered
     assert live_state.latest_answered.id == answered_question.id
 
 
-def test_live_state_keeps_answer_visible_during_handoff_pause() -> None:
+def test_live_state_keeps_current_ambient_until_it_finishes() -> None:
     with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(BroadcastSegment).delete()
         for answer in db.scalars(select(Answer)).all():
             answer.created_at = datetime.now(UTC) - timedelta(days=1)
+        now = datetime.now(UTC)
+
+        segment = BroadcastSegment(
+            title="Aktif yayin metni",
+            content="Bu cümle bitmeden soruya geçilmeyecek.",
+        )
+        db.add(segment)
+        db.flush()
+        db.add(
+            BroadcastPlayback(
+                key="global",
+                kind=PlaybackItemKind.AMBIENT,
+                phase="ambient",
+                segment_id=segment.id,
+                started_at=now - timedelta(seconds=7),
+                expected_end_at=now + timedelta(seconds=5),
+                can_interrupt_after=now - timedelta(seconds=2),
+                max_interrupt_at=now + timedelta(seconds=5),
+            )
+        )
 
         answered_question = Question(
             source_type=SourceType.MANUAL,
@@ -191,7 +260,7 @@ def test_live_state_keeps_answer_visible_during_handoff_pause() -> None:
                 latency_ms=10,
                 fallback_used=False,
                 audio_duration_ms=8000,
-                created_at=datetime.now(UTC) - timedelta(seconds=8.5),
+                created_at=now,
             )
         )
         processing_question = Question(
@@ -206,9 +275,354 @@ def test_live_state_keeps_answer_visible_during_handoff_pause() -> None:
 
         live_state = RagService(db).live_state()
 
-    assert live_state.avatar_state == "thinking"
+    assert live_state.avatar_state == "speaking"
+    assert live_state.current_phase == "answer_ready_waiting"
+    assert live_state.playback_item
+    assert live_state.playback_item.kind == "ambient"
     assert live_state.current_question
     assert live_state.current_question.id == answered_question.id
+    assert live_state.latest_answered
+    assert live_state.latest_answered.id == answered_question.id
+
+
+def test_live_state_extends_ambient_when_audio_becomes_ready_late() -> None:
+    with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(BroadcastSegment).delete()
+        now = datetime.now(UTC)
+
+        segment = BroadcastSegment(
+            title="Gec hazirlanan sohbet",
+            content="Bu bos sohbet sesi gec hazirlansa bile yarida kesilmemeli.",
+        )
+        db.add(segment)
+        db.flush()
+        job = SpeechJob(
+            kind=SpeechJobKind.AMBIENT,
+            status=SpeechJobStatus.READY,
+            text=segment.content,
+            text_hash="ambient-ready-late",
+            cache_key="ambient-ready-late",
+            segment_id=segment.id,
+            audio_url="/media/cache/ambient-ready-late.mp3",
+            audio_duration_ms=12000,
+            updated_at=now - timedelta(seconds=2),
+        )
+        db.add(job)
+        db.flush()
+        db.add(
+            BroadcastPlayback(
+                key="global",
+                kind=PlaybackItemKind.AMBIENT,
+                phase="ambient",
+                segment_id=segment.id,
+                speech_job_id=job.id,
+                started_at=now - timedelta(seconds=10),
+                expected_end_at=now + timedelta(seconds=1),
+                can_interrupt_after=now + timedelta(seconds=1),
+                max_interrupt_at=now + timedelta(seconds=1),
+            )
+        )
+        db.commit()
+
+        live_state = RagService(db).live_state()
+
+    assert live_state.playback_item
+    assert live_state.playback_item.kind == "ambient"
+    assert live_state.playback_item.expected_end_at > now + timedelta(seconds=11)
+
+
+def test_live_state_does_not_replace_ambient_while_speech_is_pending() -> None:
+    with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(BroadcastSegment).delete()
+        now = datetime.now(UTC)
+
+        segment = BroadcastSegment(
+            title="Bekleyen sohbet",
+            content="Ses hazirlanirken bu segment hemen yenisiyle degismemeli.",
+        )
+        db.add(segment)
+        db.flush()
+        job = SpeechJob(
+            kind=SpeechJobKind.AMBIENT,
+            status=SpeechJobStatus.PENDING,
+            text=segment.content,
+            text_hash="ambient-pending",
+            cache_key="ambient-pending",
+            segment_id=segment.id,
+        )
+        db.add(job)
+        db.flush()
+        db.add(
+            BroadcastPlayback(
+                key="global",
+                kind=PlaybackItemKind.AMBIENT,
+                phase="ambient",
+                segment_id=segment.id,
+                speech_job_id=job.id,
+                started_at=now - timedelta(seconds=8),
+                expected_end_at=now - timedelta(seconds=1),
+                can_interrupt_after=now - timedelta(seconds=1),
+                max_interrupt_at=now - timedelta(seconds=1),
+            )
+        )
+        db.commit()
+
+        live_state = RagService(db).live_state()
+
+    assert live_state.playback_item
+    assert live_state.playback_item.kind == "ambient"
+    assert live_state.playback_item.segment_id == segment.id
+    assert live_state.playback_item.expected_end_at > now
+
+
+def test_live_state_waits_for_answer_speech_before_answering(monkeypatch) -> None:
+    def fake_tts_available(self: SpeechService) -> bool:
+        return True
+
+    def fake_enqueue_answer(self: SpeechService, answer: Answer) -> SpeechJob:
+        existing = self.db.scalar(select(SpeechJob).where(SpeechJob.answer_id == answer.id))
+        if existing:
+            return existing
+
+        job = SpeechJob(
+            kind=SpeechJobKind.ANSWER,
+            status=SpeechJobStatus.PENDING,
+            text=answer.content,
+            text_hash=f"hash-{answer.id}",
+            cache_key=f"cache-{answer.id}",
+            answer_id=answer.id,
+        )
+        self.db.add(job)
+        self.db.flush()
+        return job
+
+    monkeypatch.setattr(SpeechService, "tts_available", fake_tts_available)
+    monkeypatch.setattr(SpeechService, "enqueue_answer", fake_enqueue_answer)
+
+    with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(BroadcastSegment).delete()
+        for answer in db.scalars(select(Answer)).all():
+            answer.created_at = datetime.now(UTC) - timedelta(days=1)
+        answered_question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Speaker",
+            content="Ses hazir olmadan okunmamasi gereken soru",
+            normalized_content="ses hazir olmadan okunmamasi gereken soru",
+            status=QuestionStatus.ANSWERED,
+        )
+        db.add(answered_question)
+        db.flush()
+        db.add(
+            Answer(
+                question_id=answered_question.id,
+                content="Bu yanitin ses dosyasi henuz hazir degil.",
+                model_name="test",
+                latency_ms=10,
+                fallback_used=False,
+                created_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+
+        live_state = RagService(db).live_state()
+
+    assert live_state.current_phase == "answer_ready_waiting"
+    assert live_state.playback_item
+    assert live_state.playback_item.kind == "ambient"
+    assert live_state.current_question
+    assert live_state.current_question.id == answered_question.id
+    assert live_state.latest_answered
+    assert live_state.latest_answered.id == answered_question.id
+
+
+def test_failed_answer_speech_job_is_requeued_when_cache_changes(monkeypatch) -> None:
+    def fake_tts_available(self: SpeechService) -> bool:
+        return True
+
+    monkeypatch.setattr(SpeechService, "tts_available", fake_tts_available)
+
+    with SessionLocal() as db:
+        question = Question(
+            source_type=SourceType.MANUAL,
+            author_name="Speaker",
+            content="Seslendirme tekrar denensin mi?",
+            normalized_content="seslendirme tekrar denensin mi",
+            status=QuestionStatus.ANSWERED,
+        )
+        db.add(question)
+        db.flush()
+        answer = Answer(
+            question_id=question.id,
+            content="Ekranda görünen cevap.",
+            speech_content="Yayında okunacak daha doğal cevap.",
+            model_name="test",
+            latency_ms=10,
+            fallback_used=False,
+            audio_model_name="old-model",
+            audio_error_message="old failure",
+        )
+        db.add(answer)
+        db.flush()
+        db.add(
+            SpeechJob(
+                kind=SpeechJobKind.ANSWER,
+                status=SpeechJobStatus.FAILED,
+                text="Eski ses metni.",
+                text_hash="old-hash",
+                cache_key="old-cache",
+                answer_id=answer.id,
+                error_message="old failure",
+            )
+        )
+        db.commit()
+
+        job = SpeechService(db).enqueue_answer(answer)
+        db.commit()
+
+    assert job is not None
+    assert job.status == SpeechJobStatus.PENDING
+    assert job.text == "Yayında okunacak daha doğal cevap."
+    assert job.error_message is None
+    assert answer.audio_error_message is None
+
+
+def test_ambient_speech_job_is_recreated_when_model_or_voice_changes(monkeypatch, tmp_path) -> None:
+    def fake_tts_available(self: SpeechService) -> bool:
+        return True
+
+    monkeypatch.setattr(SpeechService, "tts_available", fake_tts_available)
+
+    settings = Settings(
+        _env_file=None,
+        generated_audio_dir=str(tmp_path),
+        tts_provider="openrouter",
+        tts_model="x-ai/grok-voice-tts-1.0",
+        tts_voice="Ara",
+    )
+
+    with SessionLocal() as db:
+        segment = BroadcastSegment(
+            title="Model degisen sohbet",
+            content="Ayni metin yeni ses modeliyle yeniden uretilmeli.",
+        )
+        db.add(segment)
+        db.flush()
+
+        old_job = SpeechJob(
+            kind=SpeechJobKind.AMBIENT,
+            status=SpeechJobStatus.READY,
+            text=segment.content,
+            text_hash=SpeechService(db, settings=settings)._text_hash(segment.content),
+            cache_key="old-model-cache",
+            segment_id=segment.id,
+            audio_url="/media/cache/old-model-cache.mp3",
+            audio_duration_ms=8000,
+            audio_model_name="microsoft/mai-voice-2",
+        )
+        db.add(old_job)
+        db.flush()
+        old_job_id = old_job.id
+        db.commit()
+
+        job = SpeechService(db, settings=settings).ensure_segment_job(segment)
+        db.commit()
+
+        assert job is not None
+        job_id = job.id
+        job_status = job.status
+        job_cache_key = job.cache_key
+
+    assert job_id != old_job_id
+    assert job_status == SpeechJobStatus.PENDING
+    assert job_cache_key != "old-model-cache"
+
+
+def test_prepare_ambient_speech_jobs_enqueues_fixed_library(monkeypatch, tmp_path) -> None:
+    def fake_tts_available(self: SpeechService) -> bool:
+        return True
+
+    monkeypatch.setattr(SpeechService, "tts_available", fake_tts_available)
+
+    with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(SpeechJob).filter(SpeechJob.kind == SpeechJobKind.AMBIENT).delete()
+        db.query(BroadcastSegment).delete()
+        db.commit()
+
+        settings = Settings(_env_file=None, generated_audio_dir=str(tmp_path))
+        speech = SpeechService(db, settings=settings)
+        prepared = BroadcastService(db, speech_service=speech).prepare_ambient_speech_jobs(max_items=100)
+        db.commit()
+
+        active_segments = db.scalars(select(BroadcastSegment)).all()
+        ambient_jobs = db.scalars(
+            select(SpeechJob).where(SpeechJob.kind == SpeechJobKind.AMBIENT)
+        ).all()
+
+    assert len(active_segments) == len(DEFAULT_AMBIENT_SEGMENTS)
+    assert prepared == len(DEFAULT_AMBIENT_SEGMENTS)
+    assert len(ambient_jobs) == len(DEFAULT_AMBIENT_SEGMENTS)
+    assert {segment.title for segment in active_segments} == {
+        title for title, _content in DEFAULT_AMBIENT_SEGMENTS
+    }
+
+
+def test_live_state_prefers_ready_ambient_audio(monkeypatch) -> None:
+    def fake_tts_available(self: SpeechService) -> bool:
+        return True
+
+    monkeypatch.setattr(SpeechService, "tts_available", fake_tts_available)
+
+    with SessionLocal() as db:
+        db.query(BroadcastPlayback).delete()
+        db.query(SpeechJob).filter(SpeechJob.kind == SpeechJobKind.AMBIENT).delete()
+        db.query(BroadcastSegment).delete()
+        now = datetime.now(UTC)
+        pending_segment = BroadcastSegment(
+            title="Hazir olmayan sohbet",
+            content="Bu metnin sesi henuz hazir degil.",
+            priority=100,
+        )
+        ready_segment = BroadcastSegment(
+            title="Hazir sohbet",
+            content="Bu metnin sesi hazir oldugu icin once secilmeli.",
+            priority=1,
+        )
+        db.add_all([pending_segment, ready_segment])
+        db.flush()
+
+        speech = SpeechService(db)
+        db.add(
+            SpeechJob(
+                kind=SpeechJobKind.AMBIENT,
+                status=SpeechJobStatus.PENDING,
+                text=pending_segment.content,
+                text_hash=speech._text_hash(pending_segment.content),
+                cache_key=speech._cache_key(pending_segment.content),
+                segment_id=pending_segment.id,
+            )
+        )
+        db.add(
+            SpeechJob(
+                kind=SpeechJobKind.AMBIENT,
+                status=SpeechJobStatus.READY,
+                text=ready_segment.content,
+                text_hash=speech._text_hash(ready_segment.content),
+                cache_key=speech._cache_key(ready_segment.content),
+                segment_id=ready_segment.id,
+                audio_url="/media/cache/ready.mp3",
+                audio_duration_ms=9000,
+            )
+        )
+        db.commit()
+
+        selected = BroadcastService(db)._select_segment(now)
+
+    assert selected is not None
+    assert selected.title == "Hazir sohbet"
 
 
 def test_admin_can_toggle_tts_setting() -> None:
@@ -390,7 +804,7 @@ def test_llm_replaces_context_refusal_with_local_summary() -> None:
 
     service = LLMService()
     service.client = FakeClient()
-    answer, model_name, fallback_used = service.answer(
+    draft = service.answer(
         "Hazirlik suresi ne kadar?",
         [
             "Kaynak: Hazirlik Ogrenci El Kitabi\n"
@@ -398,21 +812,25 @@ def test_llm_replaces_context_refusal_with_local_summary() -> None:
             "Gerekli durumlarda ikinci yil tekrar hakki bulunur."
         ],
     )
+    answer, model_name, fallback_used = draft
     assert fallback_used is False
     assert model_name == service.settings.active_chat_model
-    assert "verilen baglamda" in answer.lower()
+    assert "verilen baglamda" not in answer.lower()
+    assert "bir sene" in answer.lower()
+    assert "bir sene" in draft.speech_text.lower()
 
 
 def test_llm_without_provider_marks_local_summary_as_fallback() -> None:
     service = LLMService()
     service.client = None
-    answer, model_name, fallback_used = service.answer(
+    draft = service.answer(
         "Hazirlik azami kac yil surer?",
         [
             "Kaynak: Hazirlik Ogrenci El Kitabi\n"
             "Icerik: Hazirlik bolumu egitimi bir sene surmektedir."
         ],
     )
+    answer, model_name, fallback_used = draft
     assert fallback_used is True
     assert model_name == "local-summary"
     assert "bir sene" in answer.lower()

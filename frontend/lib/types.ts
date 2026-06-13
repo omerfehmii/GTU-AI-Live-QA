@@ -1,11 +1,23 @@
 export type SourceType = "web" | "pdf" | "manual" | "youtube";
 export type QuestionStatus = "pending" | "processing" | "answered" | "failed";
 export type StreamStatus = "connected" | "disconnected" | "stopped" | "error";
-export type AvatarState = "idle" | "listening" | "thinking" | "speaking" | "error";
+export type AvatarState = "idle" | "listening" | "thinking" | "speaking" | "ambient" | "handoff" | "error";
+export type PlaybackKind = "idle" | "ambient" | "answer" | "transition" | "queue_wait" | "error";
+export type PlaybackPhase =
+  | "idle"
+  | "ambient"
+  | "preparing_answer"
+  | "answer_ready_waiting"
+  | "handoff"
+  | "answering"
+  | "queue_mode"
+  | "error";
+export type SpeechStatus = "none" | "disabled" | "pending" | "generating" | "ready" | "failed" | "text_only";
 
 export interface Answer {
   id: string;
   content: string;
+  speech_content: string | null;
   fallback_used: boolean;
   audio_url: string | null;
   audio_duration_ms: number | null;
@@ -36,12 +48,34 @@ export interface Metrics {
 
 export interface LiveState {
   avatar_state: AvatarState;
+  current_phase: PlaybackPhase;
+  playback_item: PlaybackItem | null;
   current_question: Question | null;
   latest_answered: Question | null;
   queue: Question[];
   queue_size: number;
+  answer_ready_count: number;
+  speech_queue_size: number;
   active_streams: number;
   generated_at: string;
+}
+
+export interface PlaybackItem {
+  kind: PlaybackKind;
+  phase: PlaybackPhase;
+  title: string;
+  text: string;
+  speech_key: string;
+  audio_url: string | null;
+  audio_duration_ms: number | null;
+  speech_status: SpeechStatus;
+  question_id: string | null;
+  answer_id: string | null;
+  segment_id: string | null;
+  started_at: string;
+  expected_end_at: string;
+  can_interrupt_after: string;
+  max_interrupt_at: string;
 }
 
 export interface StreamSession {

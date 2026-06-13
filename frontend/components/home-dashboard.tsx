@@ -100,7 +100,7 @@ export function HomeDashboard() {
     return new Date(createdAt).getTime() > new Date(latestCreatedAt).getTime() ? question : latest;
   }, null);
   const latestAnswerKey = latestAnsweredQuestion?.answer?.created_at ?? null;
-  const latestAnswerText = latestAnsweredQuestion?.answer?.content ?? "";
+  const latestAnswerText = latestAnsweredQuestion?.answer?.speech_content ?? latestAnsweredQuestion?.answer?.content ?? "";
 
   return (
     <main className="shell">

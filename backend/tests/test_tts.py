@@ -37,6 +37,7 @@ def test_tts_generates_audio_file_and_answer_metadata(tmp_path) -> None:
         id="answer-1",
         question_id="question-1",
         content="Merhaba, bu canlı yayın cevabıdır.",
+        speech_content="Merhaba, bunu yayında daha doğal okuyorum.",
         model_name="test-model",
     )
 
@@ -48,6 +49,7 @@ def test_tts_generates_audio_file_and_answer_metadata(tmp_path) -> None:
     assert answer.audio_duration_ms is not None
     assert client.audio.speech.payload is not None
     assert client.audio.speech.payload["voice"] == "nova"
+    assert client.audio.speech.payload["input"] == "Merhaba, bunu yayında daha doğal okuyorum."
 
 
 def test_tts_respects_runtime_disable_setting(tmp_path) -> None:

@@ -99,6 +99,7 @@ def _ensure_answer_audio_columns() -> None:
 
     existing_columns = {column["name"] for column in inspector.get_columns("answers")}
     missing_columns = [
+        ("speech_content", "TEXT"),
         ("audio_url", "TEXT"),
         ("audio_duration_ms", "INTEGER"),
         ("audio_model_name", "VARCHAR(255)"),

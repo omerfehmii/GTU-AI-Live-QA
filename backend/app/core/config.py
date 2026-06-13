@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     youtube_poll_interval_seconds: int = 5
     tts_enabled: bool = True
     tts_provider: Literal["openai", "openrouter"] = "openrouter"
-    tts_model: str = "openai/gpt-4o-mini-tts-2025-12-15"
-    tts_voice: str = "nova"
+    tts_model: str = "microsoft/mai-voice-2"
+    tts_voice: str = "en-US-Harper:MAI-Voice-2"
     tts_response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "mp3"
     tts_instructions: str = (
         "Voice Affect: Warm, clear, and teacher-like.\n"

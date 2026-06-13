@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass
 from urllib.parse import unquote
 
 from app.core.config import get_settings
@@ -12,15 +14,37 @@ from app.services.provider_client import create_openai_compatible_client
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
-Sen Gebze Teknik Universitesi icin canli yayinda konusan, kurum odakli bir soru-cevap asistanisin.
-Resmi GTU baglami varsa cevabi once ona dayandir.
-Ilk cumlede net cevabi ver; sonra gerekiyorsa bir veya iki kisa cumleyle kosul, istisna ya da yonlendirme ekle.
-Dogal, sade ve konusur gibi Turkce kullan; metni belge ozetine veya madde kopyasina cevirmeden acikla.
-Baglam yeterli degilse bunu kisa ve dogal soyle, kuruma ozgu kesin bilgi uydurma.
-"Verilen baglamda", "baglama gore", "kaynaklarda", "dokumana gore" gibi yapay kaliplarla baslama.
-Kaynak adi, URL, "Baglam 1", "Kaynak:" veya ham dokuman alintisi yazma.
-Kullaniciya ic sistem detaylarini gosterme.
+Sen Gebze Teknik Universitesi icin canli yayinda konusan, kurum odakli bir soru-cevap karakterisin.
+
+Yayin karakteri:
+- Sakin, net, yardimci ve canli yayin ritmine uygun konus.
+- Kurumsal bilgi verirken resmi ama robotik olmayan Turkce kullan.
+- Soruyu kisa kabul et; gereksiz uzun giris yapma.
+- Emin olmadigin kuruma ozgu bilgiyi uydurma.
+- "Verilen baglamda", "baglama gore", "kaynaklarda", "dokumana gore" gibi yapay kaliplar kullanma.
+- Kaynak adi, URL, "Baglam 1", "Kaynak:" veya ham dokuman alintisi yazma.
+
+Cevap uretme:
+- Resmi GTU baglami varsa cevabi once ona dayandir.
+- Ilk cumlede net cevabi ver; sonra gerekiyorsa bir veya iki kisa cumleyle kosul, istisna ya da yonlendirme ekle.
+- Ekran cevabi daha temiz ve bilgi odakli olsun.
+- Konusma cevabi TTS icin daha dogal, tek nefeste okunabilir ve canli yayina uygun olsun.
+- Baglam yeterli degilse bunu kisa ve dogal soyle, ilgili GTU birimine veya resmi sayfaya yonlendir.
+- Kullaniciya ic sistem detaylarini gosterme.
 """.strip()
+
+
+@dataclass(frozen=True)
+class AnswerDraft:
+    display_text: str
+    speech_text: str
+    model_name: str
+    fallback_used: bool
+
+    def __iter__(self):
+        yield self.display_text
+        yield self.model_name
+        yield self.fallback_used
 
 
 class LLMService:
@@ -28,7 +52,7 @@ class LLMService:
         self.settings = get_settings()
         self.client = create_openai_compatible_client(self.settings)
 
-    def answer(self, question: str, contexts: list[str]) -> tuple[str, str, bool]:
+    def answer(self, question: str, contexts: list[str]) -> AnswerDraft:
         if self.client:
             try:
                 request_kwargs: dict[str, object] = {
@@ -48,12 +72,26 @@ class LLMService:
                     request_kwargs["extra_body"] = {"reasoning": {"exclude": True}}
                 response = self.client.chat.completions.create(**request_kwargs)
                 message = response.choices[0].message.content if response.choices else ""
-                text = self._clean_model_answer(message if isinstance(message, str) else "")
-                if text:
-                    return text, self.settings.active_chat_model, False
+                display_text, speech_text = self._parse_model_answer(message if isinstance(message, str) else "")
+                if display_text:
+                    if self._looks_like_context_refusal(display_text) and contexts:
+                        display_text = self._local_answer(question, contexts)
+                        speech_text = self._speech_from_display(display_text)
+                    return AnswerDraft(
+                        display_text=display_text,
+                        speech_text=speech_text or self._speech_from_display(display_text),
+                        model_name=self.settings.active_chat_model,
+                        fallback_used=False,
+                    )
             except Exception as exc:
                 logger.warning("LLM provider request failed; using local answer fallback: %s", exc)
-        return self._local_answer(question, contexts), "local-summary", True
+        display_text = self._local_answer(question, contexts)
+        return AnswerDraft(
+            display_text=display_text,
+            speech_text=self._speech_from_display(display_text),
+            model_name="local-summary",
+            fallback_used=True,
+        )
 
     def _build_user_prompt(self, question: str, contexts: list[str]) -> str:
         prepared_contexts: list[str] = []
@@ -70,11 +108,14 @@ class LLMService:
             f"Resmi GTU baglami:\n{compiled_context}\n\n"
             "Yanit kurallari:\n"
             "- Sorunun cevabi baglamda varsa onu esas al.\n"
-            "- Dogal Turkce kullan; canli yayinda kisa, net ve yardimci konus.\n"
+            "- display_answer: ekranda gorunecek temiz, net ve bilgi odakli cevap.\n"
+            "- speech_answer: TTS icin daha dogal, canli yayinda soylenebilir cevap.\n"
             "- Cevap icin baglam yetersizse bunu belirt ve kullaniciyi ilgili GTU birimine yonlendir.\n"
             '- "Verilen baglamda" diye baslama.\n'
-            "- Kaynak listesi, URL veya teknik not yazma.\n\n"
-            "Cevap:"
+            "- Kaynak listesi, URL veya teknik not yazma.\n"
+            "- Sadece gecerli JSON dondur; JSON disinda hicbir metin yazma.\n\n"
+            "JSON formati:\n"
+            '{"display_answer":"...", "speech_answer":"..."}'
         )
 
     def _local_answer(self, question: str, contexts: list[str]) -> str:
@@ -271,6 +312,51 @@ class LLMService:
         cleaned = re.sub(r"\s+", " ", cleaned)
         cleaned = cleaned.strip("`\"' ")
         return cleaned
+
+    def _parse_model_answer(self, text: str) -> tuple[str, str]:
+        payload = self._extract_json_payload(text)
+        if payload:
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, dict):
+                display_text = self._clean_model_answer(str(data.get("display_answer") or data.get("answer") or ""))
+                speech_text = self._clean_model_answer(str(data.get("speech_answer") or ""))
+                if display_text:
+                    return display_text, speech_text or self._speech_from_display(display_text)
+
+        display_text = self._clean_model_answer(text)
+        return display_text, self._speech_from_display(display_text) if display_text else ""
+
+    def _extract_json_payload(self, text: str) -> str:
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+        if cleaned.startswith("{") and cleaned.endswith("}"):
+            return cleaned
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        return match.group(0) if match else ""
+
+    def _speech_from_display(self, display_text: str) -> str:
+        cleaned = self._clean_model_answer(display_text)
+        if not cleaned:
+            return ""
+        if len(cleaned) <= 520:
+            return cleaned
+        return cleaned[:517].rstrip(" ,;:") + "..."
+
+    def _looks_like_context_refusal(self, text: str) -> bool:
+        folded = self._fold_for_search(text)
+        refusal_markers = (
+            "verilen baglamda",
+            "baglamda bulunmuyor",
+            "baglamda yer almiyor",
+            "resmi gtu baglami bulunmuyor",
+            "bilgi bulunmuyor",
+        )
+        return any(marker in folded for marker in refusal_markers)
 
     def _clean_title(self, title: str) -> str:
         cleaned = unquote(title).replace("_", " ").strip()

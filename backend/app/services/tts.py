@@ -29,32 +29,44 @@ class TTSService:
             self.client = create_openai_compatible_client(self.settings, provider=self.settings.tts_provider)
 
     def synthesize_answer(self, answer: Answer) -> None:
-        if not self.tts_enabled() or self.client is None or not answer.content.strip():
+        speech_text = self._answer_speech_text(answer)
+        if not self.tts_enabled() or self.client is None or not speech_text:
             return
 
         output_path = self._output_path(answer.id)
         try:
-            response = self.client.audio.speech.create(
-                model=self.settings.tts_model,
-                input=answer.content[:4096],
-                voice=self.settings.tts_voice,
-                instructions=self.settings.tts_instructions,
-                response_format=self.settings.tts_response_format,
-                timeout=self.settings.llm_timeout_seconds,
-            )
-            self._write_response(response, output_path)
+            duration_ms = self.synthesize_text_to_path(speech_text, output_path)
             answer.audio_url = f"/media/answers/{output_path.name}"
-            answer.audio_duration_ms = self.audio_duration_ms(output_path) or self.estimate_duration_ms(answer.content)
+            answer.audio_duration_ms = duration_ms or self.estimate_duration_ms(speech_text)
             answer.audio_model_name = self.settings.tts_model
             answer.audio_error_message = None
         except Exception as exc:
             answer.audio_model_name = self.settings.tts_model
             answer.audio_error_message = str(exc)[:1000]
 
+    def synthesize_text_to_path(self, text: str, output_path: Path) -> int | None:
+        if not self.tts_enabled() or self.client is None or not text.strip():
+            return None
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        response = self.client.audio.speech.create(
+            model=self.settings.tts_model,
+            input=text[:4096],
+            voice=self.settings.tts_voice,
+            instructions=self.settings.tts_instructions,
+            response_format=self.settings.tts_response_format,
+            timeout=self.settings.llm_timeout_seconds,
+        )
+        self._write_response(response, output_path)
+        return self.audio_duration_ms(output_path) or self.estimate_duration_ms(text)
+
     def _output_path(self, answer_id: str) -> Path:
         output_dir = self.settings.generated_audio_path / "answers"
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir / f"{answer_id}.{self.settings.tts_response_format}"
+
+    def _answer_speech_text(self, answer: Answer) -> str:
+        return (answer.speech_content or answer.content).strip()
 
     def tts_enabled(self) -> bool:
         if self.db is None:

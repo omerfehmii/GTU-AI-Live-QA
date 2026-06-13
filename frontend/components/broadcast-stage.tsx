@@ -2,17 +2,20 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Mic, Brain, Radio, Zap, PlaySquare } from "lucide-react";
 
 import { getJson, resolveBackendAssetUrl } from "@/lib/api";
-import type { AvatarState, LiveState, Question } from "@/lib/types";
+import type { AvatarState, LiveState, PlaybackItem, Question } from "@/lib/types";
+import { TypewriterText } from "@/components/typewriter-text";
 
 const AvatarStage = dynamic(
   () => import("@/components/avatar-stage").then((module) => module.AvatarStage),
   {
     ssr: false,
     loading: () => (
-      <div className="broadcast-avatar-loading">
-        <span>Avatar hazırlanıyor</span>
+      <div className="avatar-stage-loading w-full h-full flex items-center justify-center text-[#A1A1AA]">
+        <span>Yükleniyor...</span>
       </div>
     ),
   },
@@ -20,10 +23,14 @@ const AvatarStage = dynamic(
 
 const EMPTY_LIVE_STATE: LiveState = {
   avatar_state: "idle",
+  current_phase: "idle",
+  playback_item: null,
   current_question: null,
   latest_answered: null,
   queue: [],
   queue_size: 0,
+  answer_ready_count: 0,
+  speech_queue_size: 0,
   active_streams: 0,
   generated_at: new Date(0).toISOString(),
 };
@@ -42,8 +49,26 @@ function formatTime(value?: string | null) {
 export function BroadcastStage() {
   const [liveState, setLiveState] = useState<LiveState>(EMPTY_LIVE_STATE);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState("");
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioLevelRef = useRef(0);
+  const hueRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let rafId: number;
+    const update = () => {
+      if (hueRef.current) {
+        const level = audioLevelRef.current || 0;
+        const scale = 1 + Math.min(1, Math.max(0, level * 2)) * 0.4;
+        hueRef.current.style.setProperty('--vol-scale', scale.toString());
+      }
+      rafId = requestAnimationFrame(update);
+    };
+    rafId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   const audioPlaybackRef = useRef({
     currentTime: 0,
     duration: 0,
@@ -51,6 +76,17 @@ export function BroadcastStage() {
   });
   const lastPlayedSpeechKeyRef = useRef<string | null>(null);
   const pendingAudioKeyRef = useRef<string | null>(null);
+
+  // Time updating
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function refresh() {
     try {
@@ -229,23 +265,21 @@ export function BroadcastStage() {
     };
   }, []);
 
-  const speechKey = liveState.latest_answered?.answer?.created_at ?? null;
-  const speechAudioUrl = resolveBackendAssetUrl(liveState.latest_answered?.answer?.audio_url);
-  const displayQuestion = liveState.current_question ?? liveState.latest_answered;
-  const displayedQuestionId = displayQuestion?.id ?? null;
-  const latestAnsweredQuestionId = liveState.latest_answered?.id ?? null;
-  const answerMatchesDisplayedQuestion =
-    Boolean(displayedQuestionId) && displayedQuestionId === latestAnsweredQuestionId;
-  const visibleAnswerQuestion = answerMatchesDisplayedQuestion ? liveState.latest_answered : null;
-  const visibleAnswer = visibleAnswerQuestion?.answer?.content ?? "";
-  const visibleAnswerTime = formatTime(visibleAnswerQuestion?.answer?.created_at);
-  const effectiveAvatarState: AvatarState = isAudioPlaying ? "speaking" : liveState.avatar_state;
+  const playbackItem = liveState.playback_item;
+  const isAnswerPlayback = playbackItem?.kind === "answer";
+  const speechKey = playbackItem?.speech_key ?? null;
+  const speechAudioUrl = resolveBackendAssetUrl(playbackItem?.audio_url);
+  const displayQuestion = isAnswerPlayback
+    ? liveState.current_question ?? liveState.latest_answered
+    : liveState.current_question;
+  const visibleSpeechText = playbackItem?.text ?? "";
+  const visibleAnswerText = isAnswerPlayback
+    ? displayQuestion?.answer?.content ?? playbackItem?.text ?? ""
+    : "";
+  const backendWantsSpeech = Boolean(playbackItem) && liveState.avatar_state === "speaking";
+  const effectiveAvatarState: AvatarState = isAudioPlaying || backendWantsSpeech ? "speaking" : liveState.avatar_state;
 
   useEffect(() => {
-    if (answerMatchesDisplayedQuestion) {
-      return;
-    }
-
     const audio = audioRef.current;
     pendingAudioKeyRef.current = null;
     audioLevelRef.current = 0;
@@ -261,11 +295,11 @@ export function BroadcastStage() {
     }
 
     setIsAudioPlaying(false);
-  }, [answerMatchesDisplayedQuestion, displayedQuestionId, latestAnsweredQuestionId]);
+  }, [speechKey]);
 
   useEffect(() => {
     if (
-      liveState.avatar_state !== "speaking" ||
+      !backendWantsSpeech ||
       !speechKey ||
       !speechAudioUrl ||
       lastPlayedSpeechKeyRef.current === speechKey
@@ -281,7 +315,7 @@ export function BroadcastStage() {
 
     audioPlaybackRef.current = {
       currentTime: 0,
-      duration: (liveState.latest_answered?.answer?.audio_duration_ms ?? 0) / 1000,
+      duration: (playbackItem?.audio_duration_ms ?? 0) / 1000,
       isPlaying: false,
     };
     audio.src = speechAudioUrl;
@@ -291,115 +325,136 @@ export function BroadcastStage() {
     }).catch(() => {
       pendingAudioKeyRef.current = speechKey;
     });
-  }, [liveState.avatar_state, speechAudioUrl, speechKey]);
+  }, [backendWantsSpeech, playbackItem?.audio_duration_ms, speechAudioUrl, speechKey]);
+
 
   return (
-    <main className="broadcast-shell">
-      <BroadcastTopBar avatarState={effectiveAvatarState} />
-      <section className="broadcast-stage">
-        <div className="broadcast-panel broadcast-avatar-panel">
-          <div className="broadcast-avatar-zone">
-            <AvatarStage
-              audioDurationMs={liveState.latest_answered?.answer?.audio_duration_ms ?? null}
-              audioLevelRef={audioLevelRef}
-              audioPlaybackRef={audioPlaybackRef}
-              speechKey={speechKey}
-              speechText={visibleAnswer}
-              state={effectiveAvatarState}
-              theme="studio"
-            />
+    <main className="obs-canvas">
+      {/* Dynamic Mesh Background */}
+      <div className={`obs-ambient-glow ${effectiveAvatarState}`} />
+
+      <div className="obs-screen">
+        <div className="obs-logo-container">
+          <div className="obs-logo">GTÜ AI</div>
+          <div className="obs-logo-badge">STUDIO</div>
+        </div>
+      </div>
+
+      <div className="obs-content-layout">
+        <motion.div 
+          initial={{ opacity: 0, y: -20, scale: 0.95, filter: "blur(10px)" }}
+          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          className="obs-media-card"
+        >
+          <div className="obs-media-placeholder">
+            <PlaySquare className="w-12 h-12 text-[#A1A1AA] mb-4 opacity-50" />
+            <span className="text-[#A1A1AA] text-sm tracking-widest uppercase font-medium">Video Oynatıcı</span>
           </div>
+        </motion.div>
+
+        <AnimatePresence mode="popLayout">
+          {displayQuestion && (
+            <motion.div 
+              key={displayQuestion.id || "q"}
+              initial={{ opacity: 0, y: 30, scale: 0.98, filter: "blur(10px)" }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: 20, scale: 0.98, filter: "blur(10px)" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="obs-qa-card"
+            >
+              <h2 className="obs-q">{displayQuestion.content}</h2>
+              {visibleAnswerText && (
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="obs-a"
+                >
+                  <TypewriterText text={visibleAnswerText} speed={35} />
+                </motion.p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="obs-streamer">
+        <div ref={hueRef} className={`obs-streamer-hue ${effectiveAvatarState}`} />
+        
+        <div className="obs-avatar-canvas">
+          <AvatarStage
+            audioDurationMs={playbackItem?.audio_duration_ms ?? null}
+            audioLevelRef={audioLevelRef}
+            audioPlaybackRef={audioPlaybackRef}
+            speechKey={speechKey}
+            speechText={visibleSpeechText}
+            state={effectiveAvatarState}
+            theme="studio"
+          />
+        </div>
+        
+        <div className="obs-streamer-badges">
+          <motion.div 
+            layout
+            className={`obs-badge obs-badge-${effectiveAvatarState}`}
+          >
+             {effectiveAvatarState === "speaking" ? (
+                <><Mic className="obs-badge-icon" /> CANLI SES</>
+             ) : effectiveAvatarState === "thinking" ? (
+                <><Brain className="obs-badge-icon" /> SENTEZLENİYOR</>
+             ) : (
+                <><Radio className="obs-badge-icon" /> BEKLENİYOR</>
+             )}
+          </motion.div>
+
+          <AnimatePresence mode="popLayout">
+            {effectiveAvatarState === "speaking" && (
+              <motion.div 
+                initial={{ opacity: 0, width: 0, x: -10 }}
+                animate={{ opacity: 1, width: "auto", x: 0 }}
+                exit={{ opacity: 0, width: 0, x: -10 }}
+                className="overflow-hidden"
+              >
+                <AudioVisualizer audioLevelRef={audioLevelRef} isSpeaking={true} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <div className="broadcast-copy-zone">
-          <LiveQuestionCard question={displayQuestion} />
-          <LiveAnswerCard answer={visibleAnswer} avatarState={effectiveAvatarState} answerTime={visibleAnswerTime} />
-        </div>
-      </section>
+      </div>
     </main>
   );
 }
 
-function BroadcastTopBar({
-  avatarState,
-}: {
-  avatarState: AvatarState;
-}) {
-  return (
-    <div className="broadcast-topbar-shell">
-      <header className="broadcast-topbar">
-        <div className="broadcast-brand">
-          <span className={`broadcast-live-dot broadcast-live-dot-${avatarState}`} />
-          <div>
-            <strong>GTU AI Live QA</strong>
-            <span>YouTube canlı yayın asistanı</span>
-          </div>
-        </div>
-      </header>
-    </div>
-  );
-}
+function AudioVisualizer({ audioLevelRef, isSpeaking }: { audioLevelRef: React.MutableRefObject<number>, isSpeaking: boolean }) {
+  const barsRef = useRef<(HTMLDivElement | null)[]>([]);
 
-function LiveQuestionCard({ question }: { question: Question | null }) {
-  const hasQuestion = Boolean(question);
-  const questionText = question?.content ?? "Canlı sohbet dinleniyor";
-  const questionLengthClass =
-    hasQuestion && questionText.length > 150
-      ? "is-very-long"
-      : hasQuestion && questionText.length > 95
-        ? "is-long"
-        : "";
+  useEffect(() => {
+    let rafId: number;
+    const update = () => {
+      const baseLevel = audioLevelRef.current || 0;
+      barsRef.current.forEach((bar, i) => {
+        if (!bar) return;
+        if (!isSpeaking) {
+          bar.style.transform = `scaleY(0.1)`;
+          return;
+        }
+        const multiplier = 0.6 + Math.sin(Date.now() / 150 + i * 0.5) * 0.4;
+        const level = Math.max(0.1, Math.min(1, baseLevel * multiplier * 2));
+        bar.style.transform = `scaleY(${level})`;
+      });
+      rafId = requestAnimationFrame(update);
+    };
+    rafId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafId);
+  }, [audioLevelRef, isSpeaking]);
 
   return (
-    <div className="broadcast-panel broadcast-question-panel">
-      <article className={`broadcast-question-card ${questionLengthClass} ${hasQuestion ? "" : "is-empty"}`}>
-        <div className="broadcast-card-head">
-          <span className="broadcast-kicker">Soru</span>
-        </div>
-        {hasQuestion ? <h1>{questionText}</h1> : <p className="broadcast-empty-copy">{questionText}</p>}
-        {question ? <p className="broadcast-question-meta">
-          {question.author_name || "Canlı yayın sohbeti"}
-          {` · ${formatTime(question.created_at)}`}
-        </p> : null}
-      </article>
-    </div>
-  );
-}
-
-function LiveAnswerCard({
-  answer,
-  avatarState,
-  answerTime,
-}: {
-  answer: string;
-  avatarState: AvatarState;
-  answerTime: string;
-}) {
-  const placeholder =
-    avatarState === "thinking"
-      ? "Kaynaklar taranıyor ve yayın yanıtı hazırlanıyor."
-      : "Yanıt hazır olduğunda burada görünür";
-  const displayAnswer = answer || placeholder;
-  const answerLengthClass =
-    displayAnswer.length > 520
-      ? "is-very-long"
-      : displayAnswer.length > 320
-        ? "is-long"
-        : "";
-
-  return (
-    <div
-      className={`broadcast-panel broadcast-answer-panel ${avatarState === "speaking" ? "is-speaking" : ""}`}
-    >
-      <article
-        className={`broadcast-answer-card ${avatarState === "speaking" ? "is-speaking" : ""} ${answer ? "" : "is-placeholder"} ${answerLengthClass}`}
-      >
-        <div className="broadcast-card-head">
-          <span className="broadcast-kicker">Yanıt</span>
-          {answerTime ? <span className="broadcast-source-chip">Saat {answerTime}</span> : null}
-        </div>
-        <p>{displayAnswer}</p>
-      </article>
+    <div className={`obs-visualizer ${isSpeaking ? "active" : ""}`}>
+      {[...Array(5)].map((_, i) => (
+        <div key={i} ref={(el) => { barsRef.current[i] = el; }} className="obs-visualizer-bar" />
+      ))}
     </div>
   );
 }

@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
 
-from app.models import QuestionStatus, SourceType, StreamStatus
+from app.models import QuestionStatus, SourceType, SpeechJobKind, SpeechJobStatus, StreamStatus
 
 
 class WebIngestRequest(BaseModel):
@@ -91,6 +91,7 @@ class AnswerTraceRead(BaseModel):
 class AnswerRead(BaseModel):
     id: str
     content: str
+    speech_content: str | None
     fallback_used: bool
     audio_url: str | None
     audio_duration_ms: int | None
@@ -114,12 +115,66 @@ class QuestionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SpeechJobRead(BaseModel):
+    id: str
+    kind: SpeechJobKind
+    status: SpeechJobStatus
+    audio_url: str | None
+    audio_duration_ms: int | None
+    audio_model_name: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PlaybackItemRead(BaseModel):
+    kind: Literal["idle", "ambient", "answer", "transition", "queue_wait", "error"]
+    phase: Literal[
+        "idle",
+        "ambient",
+        "preparing_answer",
+        "answer_ready_waiting",
+        "handoff",
+        "answering",
+        "queue_mode",
+        "error",
+    ]
+    title: str
+    text: str
+    speech_key: str
+    audio_url: str | None
+    audio_duration_ms: int | None
+    speech_status: Literal["none", "disabled", "pending", "generating", "ready", "failed", "text_only"]
+    question_id: str | None = None
+    answer_id: str | None = None
+    segment_id: str | None = None
+    started_at: datetime
+    expected_end_at: datetime
+    can_interrupt_after: datetime
+    max_interrupt_at: datetime
+
+
 class LiveStateRead(BaseModel):
-    avatar_state: Literal["idle", "listening", "thinking", "speaking", "error"]
+    avatar_state: Literal["idle", "listening", "thinking", "speaking", "ambient", "handoff", "error"]
+    current_phase: Literal[
+        "idle",
+        "ambient",
+        "preparing_answer",
+        "answer_ready_waiting",
+        "handoff",
+        "answering",
+        "queue_mode",
+        "error",
+    ]
+    playback_item: PlaybackItemRead | None
     current_question: QuestionRead | None
     latest_answered: QuestionRead | None
     queue: list[QuestionRead]
     queue_size: int
+    answer_ready_count: int
+    speech_queue_size: int
     active_streams: int
     generated_at: datetime
 
