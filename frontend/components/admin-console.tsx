@@ -320,6 +320,9 @@ export function AdminConsole() {
               <a className="admin-link" href="/live">
                 ▶ Yayın ekranı
               </a>
+              <a className="admin-link" href="/live/classic">
+                ▶ Klasik yayın
+              </a>
             </div>
           </div>
         </div>

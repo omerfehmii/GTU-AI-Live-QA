@@ -1,5 +1,5 @@
-import { BroadcastStage } from "@/components/broadcast-stage";
+import { LiveStageWarm } from "@/components/live-stage-warm";
 
 export default function LivePage() {
-  return <BroadcastStage />;
+  return <LiveStageWarm />;
 }

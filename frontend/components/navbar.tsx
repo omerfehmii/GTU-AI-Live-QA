@@ -28,7 +28,7 @@ export function Navbar() {
         };
     }, []);
 
-    if (pathname === "/live") {
+    if (pathname?.startsWith("/live")) {
         return null;
     }
 

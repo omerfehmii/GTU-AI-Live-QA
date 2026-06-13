@@ -130,6 +130,9 @@ export function HomeDashboard() {
                 <Link className="admin-link" href="/live">
                   ▶ Yayın ekranı
                 </Link>
+                <a className="admin-link" href="/live/classic">
+                  ▶ Klasik yayın
+                </a>
                 <div className="hero-status-card">
                   <span className="hero-status-label">3D Rehber</span>
                   <strong>Avatar arayuze entegre edildi</strong>

@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 
-export function TypewriterText({ text, speed = 25 }: { text: string; speed?: number }) {
+export function TypewriterText({
+  text,
+  speed = 25,
+  cursorClassName = "obs-typewriter-cursor",
+}: {
+  text: string;
+  speed?: number;
+  cursorClassName?: string;
+}) {
   const [displayedText, setDisplayedText] = useState("");
 
   useEffect(() => {
@@ -28,7 +36,7 @@ export function TypewriterText({ text, speed = 25 }: { text: string; speed?: num
     <span>
       {displayedText}
       {displayedText.length < text.length && (
-        <span className="obs-typewriter-cursor" />
+        <span className={cursorClassName} />
       )}
     </span>
   );

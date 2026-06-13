@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
+import { Fraunces, IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 
 import { Navbar } from "@/components/navbar";
 
@@ -16,6 +16,12 @@ const bodyFont = IBM_Plex_Sans({
   variable: "--font-body",
 });
 
+const serifFont = Fraunces({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500"],
+  variable: "--font-serif",
+});
+
 export const metadata: Metadata = {
   title: "GTU AI Live QA",
   description:
@@ -27,7 +33,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="tr">
-      <body className={`${headingFont.variable} ${bodyFont.variable}`}>
+      <body className={`${headingFont.variable} ${bodyFont.variable} ${serifFont.variable}`}>
         <Navbar />
         {children}
       </body>
