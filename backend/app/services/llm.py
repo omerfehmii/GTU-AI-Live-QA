@@ -22,7 +22,8 @@ Yayin karakteri:
 - Soruyu kisa kabul et; gereksiz uzun giris yapma.
 - Emin olmadigin kuruma ozgu bilgiyi uydurma.
 - "Verilen baglamda", "baglama gore", "kaynaklarda", "dokumana gore" gibi yapay kaliplar kullanma.
-- Kaynak adi, URL, "Baglam 1", "Kaynak:" veya ham dokuman alintisi yazma.
+- Kaynak adi, "Baglam 1", "Kaynak:" veya ham dokuman alintisi yazma.
+- Kullanici sayfa, link veya adres soruyorsa resmi adresi kisa sekilde verebilirsin.
 
 Cevap uretme:
 - Resmi GTU baglami varsa cevabi once ona dayandir.
@@ -108,11 +109,12 @@ class LLMService:
             f"Resmi GTU baglami:\n{compiled_context}\n\n"
             "Yanit kurallari:\n"
             "- Sorunun cevabi baglamda varsa onu esas al.\n"
+            "- Baglamdaki kritik resmi terimleri, belge adlarini, sayi ve sure ifadelerini mumkunse aynen koru.\n"
             "- display_answer: ekranda gorunecek temiz, net ve bilgi odakli cevap.\n"
             "- speech_answer: TTS icin daha dogal, canli yayinda soylenebilir cevap.\n"
             "- Cevap icin baglam yetersizse bunu belirt ve kullaniciyi ilgili GTU birimine yonlendir.\n"
             '- "Verilen baglamda" diye baslama.\n'
-            "- Kaynak listesi, URL veya teknik not yazma.\n"
+            "- Kaynak listesi veya teknik not yazma; kullanici sayfa, link ya da adres soruyorsa resmi URL'yi kisa sekilde verebilirsin.\n"
             "- Sadece gecerli JSON dondur; JSON disinda hicbir metin yazma.\n\n"
             "JSON formati:\n"
             '{"display_answer":"...", "speech_answer":"..."}'
@@ -123,89 +125,12 @@ class LLMService:
             return (
                 "Bu konuda net bir resmi GTU baglami bulamadim. Yine de en dogru bilgi icin ilgili GTU biriminin resmi sayfasini kontrol etmeniz iyi olur."
             )
-        direct_answer = self._direct_local_answer(question, contexts)
-        if direct_answer:
-            return direct_answer
         summary = self._summarize_contexts(question, contexts)
         if summary:
             return summary
         return (
             "Bu soru icin ilgili GTU baglamini buldum ancak daha net bir resmi bilgi icin ilgili GTU sayfasini kontrol etmeniz iyi olur."
         )
-
-    def _direct_local_answer(self, question: str, contexts: list[str]) -> str:
-        education_language = self._answer_education_language(question, contexts)
-        if education_language:
-            return education_language
-        return ""
-
-    def _answer_education_language(self, question: str, contexts: list[str]) -> str:
-        folded_question = self._fold_for_search(question)
-        if not any(token in folded_question for token in ("ingilizce", "turkce", "yuzde", "egitim dili")):
-            return ""
-
-        department = self._department_from_question(folded_question)
-        if not department:
-            return ""
-
-        for context in contexts:
-            _, body = self._parse_context(context)
-            folded_body = self._fold_for_search(body)
-            if department not in folded_body:
-                continue
-
-            pattern = rf"{re.escape(department)}\s+(?P<language>(?:%?\s*\d+\s+)?(?:ingilizce|turkce))"
-            match = re.search(pattern, folded_body)
-            if not match:
-                continue
-
-            language = re.sub(r"\s+", " ", match.group("language")).strip()
-            display_department = self._display_department(department)
-            if "turkce" in language:
-                return f"GTU {display_department} programinin egitim dili Turkcedir."
-            if re.search(r"\d+", language):
-                percent = re.search(r"\d+", language)
-                return f"GTU {display_department} programinin egitim dili %{percent.group(0)} Ingilizcedir."
-            return f"GTU {display_department} programinin egitim dili Ingilizcedir."
-        return ""
-
-    def _department_from_question(self, folded_question: str) -> str:
-        departments = (
-            "bilgisayar muhendisligi",
-            "elektronik muhendisligi",
-            "biyomuhendislik",
-            "cevre muhendisligi",
-            "endustri muhendisligi",
-            "insaat muhendisligi",
-            "harita muhendisligi",
-            "kimya muhendisligi",
-            "makine muhendisligi",
-            "malzeme bilimi ve muhendisligi",
-            "ucak muhendisligi",
-            "mimarlik",
-            "isletme",
-            "iktisat",
-            "yonetim bilisim sistemleri",
-        )
-        for department in departments:
-            if department in folded_question:
-                return department
-        return ""
-
-    def _display_department(self, department: str) -> str:
-        return {
-            "bilgisayar muhendisligi": "Bilgisayar Muhendisligi",
-            "elektronik muhendisligi": "Elektronik Muhendisligi",
-            "cevre muhendisligi": "Cevre Muhendisligi",
-            "endustri muhendisligi": "Endustri Muhendisligi",
-            "insaat muhendisligi": "Insaat Muhendisligi",
-            "harita muhendisligi": "Harita Muhendisligi",
-            "kimya muhendisligi": "Kimya Muhendisligi",
-            "makine muhendisligi": "Makine Muhendisligi",
-            "malzeme bilimi ve muhendisligi": "Malzeme Bilimi ve Muhendisligi",
-            "ucak muhendisligi": "Ucak Muhendisligi",
-            "yonetim bilisim sistemleri": "Yonetim Bilisim Sistemleri",
-        }.get(department, department.title())
 
     def _summarize_contexts(self, question: str, contexts: list[str]) -> str:
         title_hint = self._build_title_hint(question, contexts)
@@ -359,7 +284,11 @@ class LLMService:
         return any(marker in folded for marker in refusal_markers)
 
     def _clean_title(self, title: str) -> str:
-        cleaned = unquote(title).replace("_", " ").strip()
+        # Only percent-decode genuine URL-encoded filenames (no literal spaces);
+        # a title that already has spaces is natural language where "%" is a
+        # percentage figure (e.g. "%30 Ingilizce") and must stay intact.
+        decoded = title if (" " in title or "%" not in title) else unquote(title)
+        cleaned = decoded.replace("_", " ").strip()
         cleaned = re.sub(r"\.pdf$", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s+", " ", cleaned)
         cleaned = re.sub(r"^Gebze Teknik Universitesi\s+", "", cleaned, flags=re.IGNORECASE)

@@ -19,3 +19,9 @@ frontend/out
 *.pyd
 dist/
 build/
+tmp/
+# SQLite transient sidecar / scratch files
+*.db-shm
+*.db-wal
+*.db-journal
+backend/tests/tmp_*.db

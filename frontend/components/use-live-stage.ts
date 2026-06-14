@@ -16,6 +16,15 @@ const EMPTY_LIVE_STATE: LiveState = {
   answer_ready_count: 0,
   speech_queue_size: 0,
   active_streams: 0,
+  display_settings: {
+    live_pet_enabled: true,
+    live_pet_variant: "screen_touch",
+    live_pet_animation_seconds: 6,
+    live_pet_interval_seconds: 120,
+    live_pet_size_px: 100,
+    avatar_blink_interval_seconds: 6.8,
+    avatar_blink_duration_seconds: 0.22,
+  },
   generated_at: new Date(0).toISOString(),
 };
 

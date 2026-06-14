@@ -45,6 +45,7 @@ class EmbeddingService:
         kwargs: dict[str, object] = {
             "model": self.settings.active_embedding_model,
             "input": payload,
+            "timeout": self.settings.llm_timeout_seconds,
         }
         if include_dimensions and self.settings.embedding_dimensions > 0:
             kwargs["dimensions"] = self.settings.embedding_dimensions

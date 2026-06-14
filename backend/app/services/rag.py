@@ -7,7 +7,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urldefrag
+from urllib.parse import unquote, urldefrag
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
@@ -208,7 +208,15 @@ class RagService:
             keyword_score = self._string_relevance(normalized, query_tokens, query_hints, chunk, candidate.string_hint)
             intent_bonus = self._intent_match_score(normalized, query_tokens, query_hints, chunk)
             page_penalty = self._page_kind_penalty(chunk) * self._document_quality_penalty(chunk)
-            final_score = round(((max(vector_score, 0.0) * 0.35) + (keyword_score * 0.55) + intent_bonus) * page_penalty, 6)
+            final_score = round(
+                (
+                    (max(vector_score, 0.0) * 0.35)
+                    + (keyword_score * 0.55)
+                    + intent_bonus
+                )
+                * page_penalty,
+                6,
+            )
             if final_score <= 0:
                 continue
             scored.append(
@@ -411,8 +419,8 @@ class RagService:
             return self._normalize_score(string_hint)
 
         content = self._fold_text(chunk.content)
-        title = self._fold_text(chunk.document.title)
-        source_url = self._fold_text(chunk.document.source_url or "")
+        title = self._fold_text(self._safe_unquote(chunk.document.title))
+        source_url = self._fold_text(self._safe_unquote(chunk.document.source_url or ""))
         query_phrase = " ".join(query_tokens)
 
         content_overlap = self._token_overlap(query_tokens, self._normalized_tokens(content))
@@ -577,6 +585,10 @@ class RagService:
         return [self._canonical_token(token) for token in tokenize(self._fold_text(value))]
 
     def _canonical_token(self, token: str) -> str:
+        if token.startswith("hafta"):
+            return "hafta"
+        if token.startswith("yariyil"):
+            return "yariyil"
         if token.startswith("yonetmel"):
             return "yonetmelik"
         if token.startswith("yonerg"):
@@ -756,6 +768,15 @@ class RagService:
         normalized = unicodedata.normalize("NFKD", normalize_text(value).lower())
         return "".join(character for character in normalized if not unicodedata.combining(character))
 
+    def _safe_unquote(self, value: str) -> str:
+        # URL-encoded titles/filenames escape spaces as %20, so they never contain
+        # literal whitespace. A value that already has spaces is natural language,
+        # where "%" denotes a percentage (e.g. "%30 Ingilizce") and must not be
+        # percent-decoded -- otherwise unquote turns "%30" into "0".
+        if not value or "%" not in value or " " in value:
+            return value
+        return unquote(value)
+
     def _cosine_similarity(self, left: list[float], right: list[float]) -> float:
         if not left or not right:
             return 0.0
@@ -767,9 +788,31 @@ class RagService:
         return numerator / (left_norm * right_norm)
 
     def _format_context(self, query: str, item: RetrievedChunk) -> str:
-        source = item.chunk.document.title
+        source = self._safe_unquote(item.chunk.document.title)
         excerpt = self._excerpt_for_question(query, item.chunk.content)
+        source_url = item.chunk.document.source_url or ""
+        if source_url and self._query_requests_source_address(query):
+            prefix = f"Resmi adres: {source_url}."
+            excerpt = f"{prefix} {excerpt}".strip()
+            if len(excerpt) > self.settings.llm_context_chars:
+                excerpt = excerpt[: self.settings.llm_context_chars - 3].rstrip(" ,;:") + "..."
         return f"Kaynak: {source}\nIcerik: {excerpt}"
+
+    def _query_requests_source_address(self, query: str) -> bool:
+        folded_query = self._fold_text(query)
+        return any(
+            marker in folded_query
+            for marker in (
+                "nereden",
+                "nasil ulas",
+                "ulasabilirim",
+                "hangi sayfa",
+                "hangi sayfadan",
+                "sayfasina gitmeliyim",
+                "link",
+                "adres",
+            )
+        )
 
     def _excerpt_for_question(self, query: str, content: str) -> str:
         collapsed = normalize_text(content)
@@ -827,11 +870,12 @@ class RagService:
 
     def _targeted_excerpt(self, query_tokens: list[str], text: str, limit: int) -> str:
         query_token_set = set(query_tokens)
+        department_patterns = self._department_patterns_for_query(query_token_set)
+
         language_intent = bool(query_token_set & {"ingilizce", "turkce", "yuzde", "dili"})
         if not language_intent:
             return ""
 
-        department_patterns = self._department_patterns_for_query(query_token_set)
         if not department_patterns:
             return ""
 
@@ -930,6 +974,10 @@ class RagService:
             has_duration_verb = bool(segment_token_set & {"sureli", "surer", "surmektedir", "surerken", "azami"})
             if "devam etmek zorundadir" in folded_segment or "devam etmek zorundadirlar" in folded_segment:
                 has_duration_verb = True
+            if "normal suresi" in folded_segment and has_time_unit:
+                score += 0.42
+            if {"guz", "bahar", "yariyil"} <= segment_token_set and has_time_unit:
+                score += 0.16
             if has_number:
                 score += 0.08
             if has_time_unit:

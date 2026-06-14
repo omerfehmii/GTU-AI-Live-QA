@@ -9,6 +9,7 @@ import type {
   ArchiveStats,
   DocumentItem,
   IngestSummary,
+  PetVariant,
   StreamSession,
 } from "@/lib/types";
 
@@ -63,6 +64,49 @@ const DEFAULT_INCLUDE_PATTERNS =
 const DEFAULT_PRIORITIZE_PATTERNS =
   "aday.gtu.edu.tr/\n/tr/\n/en/\n/faq-page\nabl.gtu.edu.tr/ects/\ninternational.gtu.edu.tr/\n/icerik/\n/kategori/\n.pdf";
 
+type StageSettingsDraft = Pick<
+  AdminSettings,
+  | "avatar_blink_duration_seconds"
+  | "avatar_blink_interval_seconds"
+  | "live_pet_animation_seconds"
+  | "live_pet_enabled"
+  | "live_pet_interval_seconds"
+  | "live_pet_size_px"
+  | "live_pet_variant"
+>;
+
+const DEFAULT_STAGE_SETTINGS: StageSettingsDraft = {
+  avatar_blink_duration_seconds: 0.22,
+  avatar_blink_interval_seconds: 6.8,
+  live_pet_animation_seconds: 6,
+  live_pet_enabled: true,
+  live_pet_interval_seconds: 120,
+  live_pet_size_px: 100,
+  live_pet_variant: "screen_touch",
+};
+
+const PET_VARIANT_LABELS: Record<PetVariant, string> = {
+  box: "Kutu",
+  screen_touch: "Ekrana dokunma",
+  yarn: "Yün topu",
+};
+
+function toStageSettingsDraft(settings: AdminSettings): StageSettingsDraft {
+  return {
+    avatar_blink_duration_seconds:
+      settings.avatar_blink_duration_seconds ?? DEFAULT_STAGE_SETTINGS.avatar_blink_duration_seconds,
+    avatar_blink_interval_seconds:
+      settings.avatar_blink_interval_seconds ?? DEFAULT_STAGE_SETTINGS.avatar_blink_interval_seconds,
+    live_pet_animation_seconds:
+      settings.live_pet_animation_seconds ?? DEFAULT_STAGE_SETTINGS.live_pet_animation_seconds,
+    live_pet_interval_seconds:
+      settings.live_pet_interval_seconds ?? DEFAULT_STAGE_SETTINGS.live_pet_interval_seconds,
+    live_pet_enabled: settings.live_pet_enabled ?? DEFAULT_STAGE_SETTINGS.live_pet_enabled,
+    live_pet_size_px: settings.live_pet_size_px ?? DEFAULT_STAGE_SETTINGS.live_pet_size_px,
+    live_pet_variant: settings.live_pet_variant ?? DEFAULT_STAGE_SETTINGS.live_pet_variant,
+  };
+}
+
 export function AdminConsole() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("change-me-demo");
@@ -85,6 +129,7 @@ export function AdminConsole() {
   const [streams, setStreams] = useState<StreamSession[]>([]);
   const [archiveStats, setArchiveStats] = useState<ArchiveStats | null>(null);
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
+  const [stageSettingsDraft, setStageSettingsDraft] = useState<StageSettingsDraft>(DEFAULT_STAGE_SETTINGS);
   const [status, setStatus] = useState("Admin işlemleri buradan yönetilir.");
   const [isPending, startTransition] = useTransition();
 
@@ -103,6 +148,7 @@ export function AdminConsole() {
     setStreams(streamData);
     setArchiveStats(archiveData);
     setAdminSettings(settingsData);
+    setStageSettingsDraft(toStageSettingsDraft(settingsData));
   }
 
   useEffect(() => {
@@ -239,12 +285,43 @@ export function AdminConsole() {
           authHeader,
         );
         setAdminSettings(updatedSettings);
+        setStageSettingsDraft(toStageSettingsDraft(updatedSettings));
         setStatus(`TTS ${updatedSettings.tts_enabled ? "açıldı" : "kapatıldı"}. Yeni cevaplar bu ayara göre işlenecek.`);
       } catch (error) {
         if (previousSettings) {
           setAdminSettings(previousSettings);
         }
         setStatus(error instanceof Error ? error.message : "TTS ayarı güncellenemedi.");
+      }
+    });
+  }
+
+  function updateStageSettingsDraft(patch: Partial<StageSettingsDraft>) {
+    setStageSettingsDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function handleStageSettingsSave() {
+    const previousSettings = adminSettings;
+    if (previousSettings) {
+      setAdminSettings({ ...previousSettings, ...stageSettingsDraft });
+    }
+
+    startTransition(async () => {
+      try {
+        const updatedSettings = await postJson<AdminSettings>(
+          "/admin/settings",
+          stageSettingsDraft,
+          authHeader,
+        );
+        setAdminSettings(updatedSettings);
+        setStageSettingsDraft(toStageSettingsDraft(updatedSettings));
+        setStatus("Yayın görünümü güncellendi. Live ekran kısa süre içinde yeni ayarları alacak.");
+      } catch (error) {
+        if (previousSettings) {
+          setAdminSettings(previousSettings);
+          setStageSettingsDraft(toStageSettingsDraft(previousSettings));
+        }
+        setStatus(error instanceof Error ? error.message : "Yayın görünümü güncellenemedi.");
       }
     });
   }
@@ -301,16 +378,15 @@ export function AdminConsole() {
       <section className="hero animate-in" style={{ marginBottom: "var(--space-lg)" }}>
         <div className="hero-content">
           <div className="eyebrow">
-            <span>⚙</span> Operator Console
+            <span>⚙</span> Operatör Konsolu
           </div>
           <div className="hero-row">
             <div>
-              <h1>
-                Canlı yayın bağlantısı, döküman ingest ve indeks yönetimi.
-              </h1>
+              <h1>Yayını üç adımda hazırlayın.</h1>
               <p className="hero-copy">
-                Bu sayfa ilk demo sırasında operatörün veri toplama, stream açma
-                ve index yenileme ihtiyacını karşılar.
+                <strong>1.</strong> GTÜ belgelerini topla ve indexle &nbsp;·&nbsp;
+                <strong>2.</strong> YouTube yayınını bağla &nbsp;·&nbsp;
+                <strong>3.</strong> Durumu izle. Aşağıdaki bölümler bu sırayı takip eder.
               </p>
             </div>
             <div className="admin-hero-links">
@@ -328,17 +404,19 @@ export function AdminConsole() {
         </div>
       </section>
 
-      {/* ─── Status Bar ─── */}
+      {/* ─── Login + Status ─── */}
       <div
         className="panel panel-accent animate-in animate-in-delay-1"
         style={{ marginBottom: "var(--space-lg)" }}
       >
         <div className="panel-head">
-          <h2>Sistem Durumu</h2>
-          <span className="live-chip">
-            {isPending ? "Çalışıyor" : "Hazır"}
-          </span>
+          <h2>Yönetici girişi</h2>
+          <span className="live-chip">{isPending ? "Çalışıyor" : "Hazır"}</span>
         </div>
+        <p className="section-lead">
+          Admin kullanıcı adı ve şifrenizi girin. Buradaki tüm işlemler bu bilgilerle
+          yetkilendirilir; bilgiler doğruysa veriler otomatik yüklenir.
+        </p>
         <div className="form-grid">
           <label>
             Kullanıcı adı
@@ -361,36 +439,278 @@ export function AdminConsole() {
         </p>
       </div>
 
-      {/* ─── Top 3-Col Grid: YouTube, PDF, Archive Stats ─── */}
-      <div className="admin-grid-3">
-        {/* YouTube */}
-        <div className="panel animate-in animate-in-delay-2">
+      {/* ─── Section 1 · Veri kaynakları ─── */}
+      <div className="section-title animate-in animate-in-delay-2">
+        <h2>1 · Veri kaynakları</h2>
+      </div>
+      <p className="section-lead">
+        Sistem yalnızca burada toplanan GTÜ belgelerinden cevap üretir. İlk kurulumda
+        web kaynaklarını tarayıp indexleyin; dilerseniz tek tek PDF de yükleyebilirsiniz.
+      </p>
+
+      {/* Guided crawl flow */}
+      <div className="panel animate-in animate-in-delay-2">
+        <div className="panel-head">
+          <h2>🌐 Web kaynaklarını topla</h2>
+          <span className="subtle-note">Sırayla 3 adım</span>
+        </div>
+
+        <div className="guided-steps">
+          <div className="guided-step">
+            <span className="step-num">1</span>
+            <span className="step-copy">
+              <strong>GTÜ profilini yükle</strong>
+              <span>Resmi GTÜ alanlarından hazır URL listesini doldurur.</span>
+            </span>
+            <button
+              className="btn btn-accent btn-sm"
+              type="button"
+              onClick={applyDefaultProfile}
+            >
+              Profili yükle
+            </button>
+          </div>
+
+          <div className="guided-step">
+            <span className="step-num">2</span>
+            <span className="step-copy">
+              <strong>Arşive indir</strong>
+              <span>Listedeki sayfa ve PDF&apos;leri yerel arşive indirir.</span>
+            </span>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              onClick={handleArchiveCrawl}
+              disabled={isPending}
+            >
+              Arşive indir
+            </button>
+          </div>
+
+          <div className="guided-step">
+            <span className="step-num">3</span>
+            <span className="step-copy">
+              <strong>Arşivden indexle</strong>
+              <span>İndirilen içerikleri aranabilir hâle getirir (cevaplar için gerekli).</span>
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              onClick={handleArchiveIndex}
+              disabled={isPending}
+            >
+              Indexle
+            </button>
+          </div>
+        </div>
+
+        <details className="admin-advanced">
+          <summary>Gelişmiş ayarlar (kaynak listeleri ve tarama kuralları)</summary>
+          <p className="section-lead" style={{ marginTop: "var(--space-md)" }}>
+            Çoğu durumda &quot;Profili yükle&quot; yeterlidir. Buradan kaynak
+            listelerini ve tarama kapsamını elle düzenleyebilirsiniz.
+          </p>
+          <div className="dashboard-grid" style={{ marginTop: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+              <label>
+                Seed URL listesi
+                <textarea
+                  value={seedUrls}
+                  onChange={(event) => setSeedUrls(event.target.value)}
+                  rows={5}
+                />
+              </label>
+              <label>
+                PDF URL listesi
+                <textarea
+                  value={pdfUrls}
+                  onChange={(event) => setPdfUrls(event.target.value)}
+                  rows={4}
+                />
+              </label>
+              <label>
+                Ek sitemap URL listesi
+                <textarea
+                  value={sitemapUrls}
+                  onChange={(event) => setSitemapUrls(event.target.value)}
+                  rows={3}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+              <label>
+                İzinli domainler
+                <input
+                  value={allowedDomains}
+                  onChange={(event) => setAllowedDomains(event.target.value)}
+                />
+              </label>
+              <label>
+                Dahil et patternleri
+                <textarea
+                  value={includePatterns}
+                  onChange={(event) => setIncludePatterns(event.target.value)}
+                  rows={4}
+                />
+              </label>
+              <label>
+                Öncelik patternleri
+                <textarea
+                  value={prioritizePatterns}
+                  onChange={(event) => setPrioritizePatterns(event.target.value)}
+                  rows={4}
+                />
+              </label>
+              <label>
+                Maksimum sayfa
+                <input
+                  value={maxPages}
+                  onChange={(event) => setMaxPages(event.target.value)}
+                  inputMode="numeric"
+                />
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-sm)",
+                }}
+              >
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={discoverSitemaps}
+                    onChange={(event) => setDiscoverSitemaps(event.target.checked)}
+                  />
+                  Robots ve sitemap keşfini kullan
+                </label>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={useCachedSources}
+                    onChange={(event) => setUseCachedSources(event.target.checked)}
+                  />
+                  Yerel kaynak arşivini kullan
+                </label>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={refreshCachedSources}
+                    onChange={(event) => setRefreshCachedSources(event.target.checked)}
+                  />
+                  Kaynakları ağdan yeniden indir
+                </label>
+              </div>
+            </div>
+          </div>
+          <p className="status-note" style={{ marginTop: "var(--space-md)" }}>
+            İndirilen HTML ve PDF kaynakları backend/data/source_archive altında saklanır.
+          </p>
+        </details>
+      </div>
+
+      {/* PDF + Archive stats */}
+      <div className="admin-grid-3" style={{ marginTop: "var(--space-lg)" }}>
+        <div className="panel animate-in animate-in-delay-3">
           <div className="panel-head">
-            <h2>▶ YouTube Stream</h2>
-            <span className="subtle-note">Gerçek live chat bağlantısı</span>
+            <h2>📄 Tek tek PDF yükle</h2>
+            <span className="subtle-note">Yönerge, kılavuz, takvim</span>
+          </div>
+          <p className="section-lead" style={{ marginBottom: "var(--space-sm)" }}>
+            Elindeki PDF dosyalarını doğrudan yükle; sistem otomatik indexler.
+          </p>
+          <input
+            type="file"
+            accept="application/pdf"
+            multiple
+            onChange={handlePdfUpload}
+          />
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={handleRebuild}
+            disabled={isPending}
+            style={{ marginTop: "var(--space-md)", width: "100%" }}
+          >
+            Indexi yeniden oluştur
+          </button>
+        </div>
+
+        <div className="panel animate-in animate-in-delay-4">
+          <div className="panel-head">
+            <h2>📊 Arşiv durumu</h2>
+          </div>
+          <div className="archive-stats-grid">
+            <div className="archive-stat-item">
+              <span className="stat-value">{archiveStats?.total_sources ?? 0}</span>
+              <span className="stat-label">Toplam kaynak</span>
+            </div>
+            <div className="archive-stat-item">
+              <span className="stat-value">{archiveStats?.web_sources ?? 0}</span>
+              <span className="stat-label">Web</span>
+            </div>
+            <div className="archive-stat-item">
+              <span className="stat-value">{archiveStats?.pdf_sources ?? 0}</span>
+              <span className="stat-label">PDF</span>
+            </div>
+            <div className="archive-stat-item">
+              <span className="stat-value">{archiveSizeMb} MB</span>
+              <span className="stat-label">Boyut</span>
+            </div>
+            <div className="archive-stat-item">
+              <span className="stat-value">{archiveStats?.indexed_documents ?? 0}</span>
+              <span className="stat-label">İndexli</span>
+            </div>
+            <div className="archive-stat-item">
+              <span className="stat-value">{archiveStats?.raw_files_present ?? 0}</span>
+              <span className="stat-label">Ham dosya</span>
+            </div>
+          </div>
+          <p className="status-note">Son güncelleme: {lastCachedAtLabel}</p>
+        </div>
+      </div>
+
+      {/* ─── Section 2 · Yayın ─── */}
+      <div className="section-title animate-in animate-in-delay-3">
+        <h2>2 · Yayın</h2>
+      </div>
+      <p className="section-lead">
+        Veriler hazır olduğunda YouTube canlı yayınını bağlayın. Worker, sohbetteki
+        soruları otomatik alıp cevaplar. Sesli yanıtı buradan açıp kapatabilirsiniz.
+      </p>
+
+      <div className="admin-grid-3">
+        <div className="panel animate-in animate-in-delay-3">
+          <div className="panel-head">
+            <h2>▶ YouTube yayını</h2>
+            <span className="subtle-note">Canlı sohbet bağlantısı</span>
           </div>
           <label>
             Video ID
             <input
               value={videoId}
               onChange={(event) => setVideoId(event.target.value)}
-              placeholder="YouTube video ID"
+              placeholder="örn. dQw4w9WgXcQ"
             />
           </label>
+          <p className="section-lead" style={{ margin: "var(--space-sm) 0 0" }}>
+            YouTube yayın bağlantısındaki <code>watch?v=</code> sonrası kod.
+          </p>
           <button
             className="btn btn-primary"
             type="button"
             onClick={handleConnectStream}
+            disabled={isPending}
             style={{ marginTop: "var(--space-md)", width: "100%" }}
           >
-            Streami bağla
+            Yayını bağla
           </button>
         </div>
 
-        {/* TTS */}
-        <div className="panel animate-in animate-in-delay-3">
+        <div className="panel animate-in animate-in-delay-4">
           <div className="panel-head">
-            <h2>Yayın Sesi</h2>
+            <h2>🔊 Yayın sesi</h2>
             <span className={`live-chip ${adminSettings?.tts_enabled ? "" : "live-chip-muted"}`}>
               {adminSettings?.tts_enabled ? "TTS açık" : "TTS kapalı"}
             </span>
@@ -421,222 +741,164 @@ export function AdminConsole() {
           </div>
         </div>
 
-        {/* PDF Upload */}
         <div className="panel animate-in animate-in-delay-4">
           <div className="panel-head">
-            <h2>📄 PDF Ingest</h2>
-            <span className="subtle-note">Yönerge, kılavuz, takvim</span>
+            <h2>🐾 Yayın görünümü</h2>
+            <span className={`live-chip ${stageSettingsDraft.live_pet_enabled ? "" : "live-chip-muted"}`}>
+              {stageSettingsDraft.live_pet_enabled ? "Pet açık" : "Pet kapalı"}
+            </span>
           </div>
-          <input
-            type="file"
-            accept="application/pdf"
-            multiple
-            onChange={handlePdfUpload}
-          />
+
           <button
-            className="btn btn-secondary"
+            className={`toggle-card ${stageSettingsDraft.live_pet_enabled ? "is-on" : ""}`}
             type="button"
-            onClick={handleRebuild}
-            style={{ marginTop: "var(--space-md)", width: "100%" }}
+            role="switch"
+            aria-checked={stageSettingsDraft.live_pet_enabled}
+            disabled={isPending || !adminSettings}
+            onClick={() => updateStageSettingsDraft({ live_pet_enabled: !stageSettingsDraft.live_pet_enabled })}
           >
-            Indexi yeniden oluştur
+            <span className="toggle-track">
+              <span className="toggle-knob" />
+            </span>
+            <span className="toggle-copy">
+              <strong>Sağ alt pet</strong>
+              <span>Live ekranın köşesindeki animasyon.</span>
+            </span>
           </button>
-        </div>
 
-        {/* Archive Stats */}
-        <div className="panel animate-in animate-in-delay-5">
-          <div className="panel-head">
-            <h2>📊 Arşiv İstatistikleri</h2>
-          </div>
-          <div className="archive-stats-grid">
-            <div className="archive-stat-item">
-              <span className="stat-value">
-                {archiveStats?.total_sources ?? 0}
-              </span>
-              <span className="stat-label">Toplam kaynak</span>
-            </div>
-            <div className="archive-stat-item">
-              <span className="stat-value">
-                {archiveStats?.web_sources ?? 0}
-              </span>
-              <span className="stat-label">Web</span>
-            </div>
-            <div className="archive-stat-item">
-              <span className="stat-value">
-                {archiveStats?.pdf_sources ?? 0}
-              </span>
-              <span className="stat-label">PDF</span>
-            </div>
-            <div className="archive-stat-item">
-              <span className="stat-value">{archiveSizeMb} MB</span>
-              <span className="stat-label">Boyut</span>
-            </div>
-            <div className="archive-stat-item">
-              <span className="stat-value">
-                {archiveStats?.indexed_documents ?? 0}
-              </span>
-              <span className="stat-label">İndexli</span>
-            </div>
-            <div className="archive-stat-item">
-              <span className="stat-value">
-                {archiveStats?.raw_files_present ?? 0}
-              </span>
-              <span className="stat-label">Ham dosya</span>
-            </div>
-          </div>
-          <p className="status-note">Son güncelleme: {lastCachedAtLabel}</p>
-        </div>
-      </div>
-
-      {/* ─── Crawl & Archive Panel ─── */}
-      <div
-        className="section-title animate-in animate-in-delay-3"
-        style={{ animationDelay: "200ms" }}
-      >
-        <h2>Crawl ve Arşiv</h2>
-      </div>
-
-      <div className="panel animate-in" style={{ animationDelay: "240ms" }}>
-        <div className="panel-head">
-          <h2>🌐 Kaynak yapılandırması</h2>
-          <button
-            className="btn btn-accent btn-sm"
-            type="button"
-            onClick={applyDefaultProfile}
-          >
-            GTU profilini yükle
-          </button>
-        </div>
-
-        <div className="dashboard-grid" style={{ marginTop: 0 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+          <div className="settings-controls">
             <label>
-              Seed URL listesi
-              <textarea
-                value={seedUrls}
-                onChange={(event) => setSeedUrls(event.target.value)}
-                rows={5}
-              />
-            </label>
-            <label>
-              PDF URL listesi
-              <textarea
-                value={pdfUrls}
-                onChange={(event) => setPdfUrls(event.target.value)}
-                rows={4}
-              />
-            </label>
-            <label>
-              Ek sitemap URL listesi
-              <textarea
-                value={sitemapUrls}
-                onChange={(event) => setSitemapUrls(event.target.value)}
-                rows={3}
-              />
-            </label>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-            <label>
-              İzinli domainler
-              <input
-                value={allowedDomains}
-                onChange={(event) => setAllowedDomains(event.target.value)}
-              />
-            </label>
-            <label>
-              Dahil et patternleri
-              <textarea
-                value={includePatterns}
-                onChange={(event) => setIncludePatterns(event.target.value)}
-                rows={4}
-              />
-            </label>
-            <label>
-              Öncelik patternleri
-              <textarea
-                value={prioritizePatterns}
+              Pet animasyonu
+              <select
+                value={stageSettingsDraft.live_pet_variant}
+                disabled={isPending || !adminSettings}
                 onChange={(event) =>
-                  setPrioritizePatterns(event.target.value)
+                  updateStageSettingsDraft({ live_pet_variant: event.target.value as PetVariant })
                 }
-                rows={4}
-              />
+              >
+                {Object.entries(PET_VARIANT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label>
-              Maksimum sayfa
+
+            <label className="range-field">
+              <span>
+                Animasyon süresi
+                <strong>{stageSettingsDraft.live_pet_animation_seconds.toFixed(1)} sn</strong>
+              </span>
               <input
-                value={maxPages}
-                onChange={(event) => setMaxPages(event.target.value)}
-                inputMode="numeric"
+                type="range"
+                min="1.5"
+                max="12"
+                step="0.1"
+                value={stageSettingsDraft.live_pet_animation_seconds}
+                disabled={isPending || !adminSettings}
+                onChange={(event) =>
+                  updateStageSettingsDraft({ live_pet_animation_seconds: Number(event.target.value) })
+                }
               />
             </label>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-sm)",
-              }}
-            >
-              <label className="checkbox-row">
+
+            {stageSettingsDraft.live_pet_variant === "box" && (
+              <label className="range-field">
+                <span>
+                  Kedi çıkış aralığı
+                  <strong>{Math.round(stageSettingsDraft.live_pet_interval_seconds)} sn</strong>
+                </span>
                 <input
-                  type="checkbox"
-                  checked={discoverSitemaps}
+                  type="range"
+                  min="15"
+                  max="300"
+                  step="5"
+                  value={stageSettingsDraft.live_pet_interval_seconds}
+                  disabled={isPending || !adminSettings}
                   onChange={(event) =>
-                    setDiscoverSitemaps(event.target.checked)
+                    updateStageSettingsDraft({ live_pet_interval_seconds: Number(event.target.value) })
                   }
                 />
-                Robots ve sitemap keşfini kullan
               </label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={useCachedSources}
-                  onChange={(event) =>
-                    setUseCachedSources(event.target.checked)
-                  }
-                />
-                Yerel kaynak arşivini kullan
-              </label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={refreshCachedSources}
-                  onChange={(event) =>
-                    setRefreshCachedSources(event.target.checked)
-                  }
-                />
-                Kaynakları ağdan yeniden indir
-              </label>
-            </div>
+            )}
+
+            <label className="range-field">
+              <span>
+                Pet boyutu
+                <strong>{stageSettingsDraft.live_pet_size_px}px</strong>
+              </span>
+              <input
+                type="range"
+                min="50"
+                max="180"
+                step="1"
+                value={stageSettingsDraft.live_pet_size_px}
+                disabled={isPending || !adminSettings}
+                onChange={(event) =>
+                  updateStageSettingsDraft({ live_pet_size_px: Number(event.target.value) })
+                }
+              />
+            </label>
+
+            <label className="range-field">
+              <span>
+                Göz kırpma aralığı
+                <strong>{stageSettingsDraft.avatar_blink_interval_seconds.toFixed(1)} sn</strong>
+              </span>
+              <input
+                type="range"
+                min="3"
+                max="12"
+                step="0.1"
+                value={stageSettingsDraft.avatar_blink_interval_seconds}
+                disabled={isPending || !adminSettings}
+                onChange={(event) =>
+                  updateStageSettingsDraft({ avatar_blink_interval_seconds: Number(event.target.value) })
+                }
+              />
+            </label>
+
+            <label className="range-field">
+              <span>
+                Göz kırpma hızı
+                <strong>{stageSettingsDraft.avatar_blink_duration_seconds.toFixed(2)} sn</strong>
+              </span>
+              <input
+                type="range"
+                min="0.1"
+                max="0.5"
+                step="0.01"
+                value={stageSettingsDraft.avatar_blink_duration_seconds}
+                disabled={isPending || !adminSettings}
+                onChange={(event) =>
+                  updateStageSettingsDraft({ avatar_blink_duration_seconds: Number(event.target.value) })
+                }
+              />
+            </label>
           </div>
-        </div>
 
-        <p className="status-note" style={{ marginTop: "var(--space-md)" }}>
-          İndirilen HTML ve PDF kaynakları backend/data/source_archive altında
-          saklanır.
-        </p>
-
-        <div className="form-grid" style={{ marginTop: "var(--space-lg)" }}>
           <button
             className="btn btn-primary"
             type="button"
-            onClick={handleArchiveCrawl}
+            onClick={handleStageSettingsSave}
+            disabled={isPending || !adminSettings}
+            style={{ marginTop: "var(--space-md)", width: "100%" }}
           >
-            1. Arşive indir
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={handleArchiveIndex}
-          >
-            2. Arşivden indexle
+            Görünümü kaydet
           </button>
         </div>
       </div>
 
-      {/* ─── Documents & Streams ─── */}
-      <section className="dashboard-grid" style={{ marginTop: "var(--space-lg)" }}>
-        <div className="panel animate-in" style={{ animationDelay: "300ms" }}>
+      {/* ─── Section 3 · Durum ─── */}
+      <div className="section-title animate-in animate-in-delay-4">
+        <h2>3 · Durum</h2>
+      </div>
+      <p className="section-lead">
+        İndexlenmiş belgeleri ve aktif yayın oturumlarını buradan izleyebilirsiniz.
+      </p>
+
+      <section className="dashboard-grid">
+        <div className="panel animate-in">
           <div className="panel-head">
             <h2>İndexlenmiş belgeler</h2>
             <span className="subtle-note">{documents.length} kayıt</span>
@@ -656,9 +918,7 @@ export function AdminConsole() {
                     </span>
                   </div>
                   <h3>{document.title}</h3>
-                  <p>
-                    {document.source_url || document.file_name || "Yerel dosya"}
-                  </p>
+                  <p>{document.source_url || document.file_name || "Yerel dosya"}</p>
                 </article>
               ))
             )}
@@ -673,14 +933,14 @@ export function AdminConsole() {
           </button>
         </div>
 
-        <div className="panel animate-in" style={{ animationDelay: "360ms" }}>
+        <div className="panel animate-in">
           <div className="panel-head">
-            <h2>Aktif streamler</h2>
+            <h2>Aktif yayınlar</h2>
             <span className="subtle-note">{streams.length} oturum</span>
           </div>
           <div className="feed">
             {streams.length === 0 ? (
-              <div className="empty-state">Henüz stream bağlanmadı.</div>
+              <div className="empty-state">Henüz yayın bağlanmadı.</div>
             ) : (
               streams.map((stream) => (
                 <article key={stream.id} className="compact-card">

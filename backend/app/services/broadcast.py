@@ -20,6 +20,7 @@ from app.models import (
     StreamStatus,
 )
 from app.schemas import LiveStateRead, PlaybackItemRead, QuestionRead
+from app.services.runtime_settings import RuntimeSettingsService
 from app.services.speech import SpeechService
 
 
@@ -278,6 +279,7 @@ class BroadcastService:
             answer_ready_count=self._answer_ready_count(playback, now),
             speech_queue_size=self.speech_service.pending_count(),
             active_streams=int(active_streams),
+            display_settings=RuntimeSettingsService(self.db).display_settings(),
             generated_at=now,
         )
 

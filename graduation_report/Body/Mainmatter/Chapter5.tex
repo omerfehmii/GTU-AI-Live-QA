@@ -35,15 +35,15 @@ Table \ref{tab:evaluation-summary} shows the summary from the latest recorded ev
         Metric & Value \\
         \midrule
         Question count & 12 \\
-        Top-1 source hit rate & 58.33\% \\
-        Source hit rate & 83.33\% \\
-        Answer keyword hit rate & 100.00\% \\
+        Top-1 source hit rate & 83.33\% \\
+        Source hit rate & 100.00\% \\
+        Answer keyword hit rate & 91.67\% \\
         Fallback rate & 0.00\% \\
-        Average latency & 11.93 s \\
-        Median latency & 10.07 s \\
-        P95 latency & 18.43 s \\
-        Maximum latency & 23.34 s \\
-        Average confidence & 0.5254 \\
+        Average latency & 7.75 s \\
+        Median latency & 6.58 s \\
+        P95 latency & 10.60 s \\
+        Maximum latency & 15.79 s \\
+        Average confidence & 0.5931 \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -52,30 +52,28 @@ Table \ref{tab:evaluation-summary} shows the summary from the latest recorded ev
 
 Regulation and directive questions performed well when the expected source was a distinctive PDF. Examples include the undergraduate regulation, thesis writing guide, diploma directive, and Erasmus directive. These questions often contain regulation or guide terms that the retrieval system can match in filenames, titles, or PDF content.
 
-Some web navigation questions were harder. The ECTS and academic calendar questions had weaker top-1 behavior because other official sources contained related terms but were not the most precise answer source. This shows that official but indirect sources can outrank direct pages when the corpus contains broad student guides or regulation documents.
+Some web navigation questions were harder. The academic-calendar and lisans regulation-listing questions had weaker top-1 behavior because other official sources contained related terms but were not the most precise answer source: a student handbook PDF and the undergraduate regulation PDF respectively ranked first. This shows that official but indirect sources can outrank direct pages when the corpus contains broad student guides or regulation documents.
 
-The Computer Engineering department questions performed well because the department page contains distinctive phrases such as the goal of training engineers who can both seek and create jobs. Department-focused questions benefited from title, URL, and phrase overlap.
+The Computer Engineering department questions retrieved the correct department page in every case. For one of them, however, the passage selected for the model did not include the exact wording about training creative and productive engineers, so the generated answer reported that the information was not available. This is a passage-selection precision gap rather than a retrieval failure.
 
 \section{Latency Analysis}
 
-The median latency was 10.07 seconds and P95 latency was 18.43 seconds. This is acceptable for a controlled demo but high for a polished live production experience. The latency includes retrieval, provider calls, database writes, and answer post-processing. If TTS generation is included in the viewer experience, perceived latency can be higher unless audio generation is decoupled from screen answer display.
+The median latency was 6.58 seconds and P95 latency was 10.60 seconds. This is acceptable for a controlled demo but high for a polished live production experience. The latency includes retrieval, provider calls, database writes, and answer post-processing. If TTS generation is included in the viewer experience, perceived latency can be higher unless audio generation is decoupled from screen answer display.
 
-The largest observed latency was 23.34 seconds for a web question about the ECTS package. This suggests that navigation-style questions may need better direct-page routing or cached canonical answers.
+The largest observed latency was 15.79 seconds for the academic-calendar web question. This suggests that navigation-style questions may need better direct-page routing or cached canonical answers.
 
 \section{Failure and Weakness Analysis}
 
-The system did not use fallback output in the recorded run, and all answers matched expected keywords. However, top-1 source precision is the main weakness. When the first source is wrong but a correct source appears lower in the retrieved traces, the generated answer may still be acceptable, but debugging and trust are weaker. For a university-facing assistant, improving first-ranked evidence is important.
+The system did not use fallback output in the recorded run. One answer did not contain the exact expected keywords: for the Computer Engineering purpose question, the relevant wording was not present in the passage given to the model, so the model reported missing information rather than quoting the official phrasing. Top-1 source precision is the other main weakness. When the first source is wrong but a correct source appears lower in the retrieved traces, the generated answer may still be acceptable, but debugging and trust are weaker. For a university-facing assistant, improving first-ranked evidence is important.
 
-The most visible top-1 misses were:
+The top-1 misses were:
 
 \begin{itemize}
-    \item graduate regulation question: the correct source appeared in traces, but a generic regulation listing page ranked first;
-    \item ECTS package question: an Erasmus directive ranked first, even though ECTS pages were expected;
-    \item academic calendar question: a student handbook PDF ranked first and the answer stated that the direct page was not found;
-    \item research policy question: a different policy-related directive ranked first while the expected research policy document appeared elsewhere.
+    \item academic calendar question: the correct calendar page appeared in the traces, but a student handbook PDF ranked first;
+    \item lisans regulation-listing question: the correct listing page appeared in the traces, but the undergraduate regulation PDF (YN-0001) ranked first.
 \end{itemize}
 
-These misses indicate that the system needs stronger canonical page boosts, better PDF title normalization, and possibly hand-curated route hints for high-value GTU pages such as ECTS and academic calendar.
+These misses indicate that the system would benefit from stronger general signals for canonical pages, such as down-weighting broad PDFs for navigation-style questions and better PDF title normalization, rather than per-question hard-coded routing that would not generalize. The keyword miss also points to passage selection: the most relevant sentence is not always the one surfaced to the model.
 
 \section{Automated Tests}
 

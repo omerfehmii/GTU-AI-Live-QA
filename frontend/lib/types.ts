@@ -2,6 +2,7 @@ export type SourceType = "web" | "pdf" | "manual" | "youtube";
 export type QuestionStatus = "pending" | "processing" | "answered" | "failed";
 export type StreamStatus = "connected" | "disconnected" | "stopped" | "error";
 export type AvatarState = "idle" | "listening" | "thinking" | "speaking" | "ambient" | "handoff" | "error";
+export type PetVariant = "screen_touch" | "yarn" | "box";
 export type PlaybackKind = "idle" | "ambient" | "answer" | "transition" | "queue_wait" | "error";
 export type PlaybackPhase =
   | "idle"
@@ -57,7 +58,18 @@ export interface LiveState {
   answer_ready_count: number;
   speech_queue_size: number;
   active_streams: number;
+  display_settings: LiveDisplaySettings;
   generated_at: string;
+}
+
+export interface LiveDisplaySettings {
+  live_pet_enabled: boolean;
+  live_pet_variant: PetVariant;
+  live_pet_animation_seconds: number;
+  live_pet_interval_seconds: number;
+  live_pet_size_px: number;
+  avatar_blink_interval_seconds: number;
+  avatar_blink_duration_seconds: number;
 }
 
 export interface PlaybackItem {
@@ -94,6 +106,13 @@ export interface AdminSettings {
   tts_provider: string;
   tts_model: string;
   tts_voice: string;
+  live_pet_enabled: boolean;
+  live_pet_variant: PetVariant;
+  live_pet_animation_seconds: number;
+  live_pet_interval_seconds: number;
+  live_pet_size_px: number;
+  avatar_blink_interval_seconds: number;
+  avatar_blink_duration_seconds: number;
 }
 
 export interface DocumentItem {

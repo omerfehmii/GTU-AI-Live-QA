@@ -635,15 +635,36 @@ def test_admin_can_toggle_tts_setting() -> None:
     disabled_response = client.post(
         "/api/admin/settings",
         headers=admin_headers(),
-        json={"tts_enabled": False},
+        json={
+            "avatar_blink_duration_seconds": 0.18,
+            "avatar_blink_interval_seconds": 7.5,
+            "live_pet_animation_seconds": 8.0,
+            "live_pet_enabled": False,
+            "live_pet_interval_seconds": 120.0,
+            "live_pet_size_px": 120,
+            "live_pet_variant": "box",
+            "tts_enabled": False,
+        },
     )
     assert disabled_response.status_code == 200
-    assert disabled_response.json()["tts_enabled"] is False
+    disabled_body = disabled_response.json()
+    assert disabled_body["tts_enabled"] is False
+    assert disabled_body["live_pet_enabled"] is False
+    assert disabled_body["live_pet_variant"] == "box"
+    assert disabled_body["live_pet_animation_seconds"] == 8.0
+    assert disabled_body["live_pet_interval_seconds"] == 120.0
+    assert disabled_body["live_pet_size_px"] == 120
+    assert disabled_body["avatar_blink_interval_seconds"] == 7.5
+    assert disabled_body["avatar_blink_duration_seconds"] == 0.18
+
+    live_response = client.get("/api/live/state")
+    assert live_response.status_code == 200
+    assert live_response.json()["display_settings"]["live_pet_variant"] == "box"
 
     enabled_response = client.post(
         "/api/admin/settings",
         headers=admin_headers(),
-        json={"tts_enabled": True},
+        json={"live_pet_enabled": True, "live_pet_variant": "screen_touch", "tts_enabled": True},
     )
     assert enabled_response.status_code == 200
     assert enabled_response.json()["tts_enabled"] is True
@@ -782,6 +803,68 @@ def test_rag_extracts_relevant_excerpt_instead_of_chunk_prefix(monkeypatch) -> N
         item = RetrievedChunk(chunk=chunk, vector_score=0.0, keyword_score=0.0, final_score=0.0)
         context = service._format_context("Hazirlik suresi ne kadar?", item)
         assert "bir sene surmektedir" in context.lower()
+
+
+def test_rag_extracts_department_purpose_excerpt(monkeypatch) -> None:
+    def fake_embed(self: EmbeddingService, text: str) -> list[float]:
+        return [0.0] * 1536
+
+    def fake_embed_many(self: EmbeddingService, texts) -> list[list[float]]:
+        payload = list(texts)
+        return [[0.0] * 1536 for _ in payload]
+
+    monkeypatch.setattr(EmbeddingService, "embed", fake_embed)
+    monkeypatch.setattr(EmbeddingService, "embed_many", fake_embed_many)
+
+    with SessionLocal() as db:
+        ingest = IngestService(db)
+        created, _ = ingest._upsert_document(
+            ParsedDocument(
+                title="Gebze Teknik Universitesi",
+                content=(
+                    "Final sinav programi, videolar, iletisim ve haber duyurulari. "
+                    "Bilgisayar Muhendisligi bolumunun amaci bilgi cagini sekillendirebilecek, "
+                    "temel muhendislik ve bilgisayar konularinda donanimli, yaratici ve uretken "
+                    "bilgisayar muhendisleri ve arastirmacilar yetistirmektir. "
+                    "Ders programlari ve duyurular sayfanin alt kisminda listelenir."
+                ),
+                source_url="https://www.gtu.edu.tr/kategori/91/3/bilgisayar-muhendisligi-excerpt-test.aspx",
+                metadata_json={"page_kind": "content"},
+            )
+        )
+        assert created == 1
+        db.commit()
+
+        service = RagService(db)
+        chunk = db.scalar(
+            select(Chunk)
+            .join(Chunk.document)
+            .where(Document.source_url.endswith("bilgisayar-muhendisligi-excerpt-test.aspx"))
+        )
+        assert chunk is not None
+        item = RetrievedChunk(chunk=chunk, vector_score=0.0, keyword_score=0.0, final_score=0.0)
+        context = service._format_context(
+            "GTU Bilgisayar Muhendisligi bolumu ne tur ogrenciler yetistirmeyi amacliyor?",
+            item,
+        )
+        folded_context = service._fold_text(context)
+        assert "yaratici" in folded_context
+        assert "uretken" in folded_context
+        assert "bilgisayar muhendisleri" in folded_context
+
+
+def test_safe_unquote_decodes_filenames_but_preserves_percentages() -> None:
+    with SessionLocal() as db:
+        service = RagService(db)
+
+        # URL-encoded filenames (no literal spaces) are decoded.
+        assert (
+            service._safe_unquote("PO-0016%20GTU%20Research%20Policy%20R0.pdf")
+            == "PO-0016 GTU Research Policy R0.pdf"
+        )
+        # Natural-language titles with spaces keep Turkish percentage figures intact.
+        assert service._safe_unquote("%30 Ingilizce egitim") == "%30 Ingilizce egitim"
+        assert service._safe_unquote("Bolum %50 Ingilizce") == "Bolum %50 Ingilizce"
 
 
 def test_llm_replaces_context_refusal_with_local_summary() -> None:

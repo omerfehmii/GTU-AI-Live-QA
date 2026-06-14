@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import asdict, dataclass
 from statistics import mean
+from urllib.parse import unquote
 
 from app.models import AnswerTrace
 
@@ -38,20 +41,51 @@ class EvaluationResult:
 def source_hit(traces: list[AnswerTrace], expected_fragments: list[str]) -> bool:
     if not expected_fragments:
         return True
-    lowered_fragments = [fragment.lower() for fragment in expected_fragments]
+    lowered_fragments = [_fold_match_text(fragment) for fragment in expected_fragments]
     for trace in traces:
         haystacks = [trace.source_title or "", trace.source_url or "", trace.snippet or ""]
-        joined = " ".join(haystacks).lower()
+        joined = _fold_match_text(" ".join(_safe_unquote(haystack) for haystack in haystacks))
         if any(fragment in joined for fragment in lowered_fragments):
             return True
     return False
 
 
+def _safe_unquote(value: str) -> str:
+    # URL-encoded titles/filenames escape spaces as %20 and so have no literal
+    # whitespace. A value that already contains spaces is natural language where
+    # "%" denotes a percentage (e.g. "%30 Ingilizce") and must not be decoded.
+    if not value or "%" not in value or " " in value:
+        return value
+    return unquote(value)
+
+
+def _fold_match_text(value: str) -> str:
+    decoded = (
+        value
+        .replace("ç", "c")
+        .replace("Ç", "c")
+        .replace("ğ", "g")
+        .replace("Ğ", "g")
+        .replace("ı", "i")
+        .replace("I", "i")
+        .replace("İ", "i")
+        .replace("ö", "o")
+        .replace("Ö", "o")
+        .replace("ş", "s")
+        .replace("Ş", "s")
+        .replace("ü", "u")
+        .replace("Ü", "u")
+    )
+    normalized = unicodedata.normalize("NFKD", decoded.lower())
+    without_accents = "".join(character for character in normalized if not unicodedata.combining(character))
+    return re.sub(r"\s+", " ", without_accents).strip()
+
+
 def answer_keyword_hit(answer_text: str, expected_keywords: list[str]) -> bool:
     if not expected_keywords:
         return True
-    lowered = answer_text.lower()
-    return any(keyword.lower() in lowered for keyword in expected_keywords)
+    folded_answer = _fold_match_text(answer_text)
+    return any(_fold_match_text(keyword) in folded_answer for keyword in expected_keywords)
 
 
 def summarize_results(results: list[EvaluationResult]) -> dict[str, float | int]:

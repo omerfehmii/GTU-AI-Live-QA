@@ -57,6 +57,9 @@ const AVATAR_VIEWS = {
 const SPEECH_MOUTH_GAIN = 1.24;
 const SPEECH_PULSE_GAIN = 1.42;
 const SPEECH_ARM_GESTURE_GAIN = 0.38;
+const BLINK_BASE_INTERVAL_SECONDS = 6.8;
+const BLINK_INTERVAL_VARIATION_SECONDS = 1.1;
+const BLINK_DURATION_SECONDS = 0.22;
 
 type GestureRig = {
   leftClavicle?: Object3D;
@@ -389,6 +392,8 @@ function getMeshBounds(scene: Object3D) {
 function AvatarModel({
   audioDurationMs,
   avatarState,
+  blinkDurationSeconds,
+  blinkIntervalSeconds,
   speakingUntil,
   speechKey,
   speechText,
@@ -399,6 +404,8 @@ function AvatarModel({
 }: {
   audioDurationMs?: number | null;
   avatarState: AvatarState;
+  blinkDurationSeconds: number;
+  blinkIntervalSeconds: number;
   speakingUntil: React.RefObject<number>;
   speechKey: string | null;
   speechText: string;
@@ -732,7 +739,14 @@ function AvatarModel({
       0.1,
     );
 
-    const blink = Math.max(0, Math.sin(elapsed * 0.8 + blinkSeed.current) - 0.94) * 14;
+    const blinkInterval =
+      blinkIntervalSeconds +
+      Math.sin(blinkSeed.current) * BLINK_INTERVAL_VARIATION_SECONDS;
+    const blinkTime = (elapsed + blinkSeed.current) % blinkInterval;
+    const blink =
+      blinkTime < blinkDurationSeconds
+        ? Math.sin((blinkTime / blinkDurationSeconds) * Math.PI)
+        : 0;
     const consonantClosure = Math.max(
       visemeTargets.close,
       visemeTargets.plosive * 0.9,
@@ -756,9 +770,9 @@ function AvatarModel({
     const bottomLipDownTarget = speaking ? MathUtils.clamp(mouthOpenTarget * 0.42 + lipPartTarget * 0.28, 0, 0.64) : 0;
     const topLipUpTarget = speaking ? MathUtils.clamp(mouthOpenTarget * 0.18 + lipPartTarget * 0.12, 0, 0.32) : 0;
     for (const mesh of morphMeshes) {
-      dampInfluence(mesh, ["eyeBlinkLeft", "Eye_Blink_L"], blink);
-      dampInfluence(mesh, ["eyeBlinkRight", "Eye_Blink_R"], blink);
-      dampInfluence(mesh, ["eyesClosed", "Eye_Blink"], blink * 0.65);
+      dampInfluence(mesh, ["eyeBlinkLeft", "Eye_Blink_L"], blink, 0.52);
+      dampInfluence(mesh, ["eyeBlinkRight", "Eye_Blink_R"], blink, 0.52);
+      dampInfluence(mesh, ["eyesClosed", "Eye_Blink"], blink * 0.65, 0.52);
       dampInfluence(
         mesh,
         ["mouthSmile", "Mouth_Smile"],
@@ -862,6 +876,8 @@ export function AvatarStage({
   theme = "default",
   audioLevelRef,
   audioPlaybackRef,
+  blinkDurationSeconds = BLINK_DURATION_SECONDS,
+  blinkIntervalSeconds = BLINK_BASE_INTERVAL_SECONDS,
 }: {
   audioDurationMs?: number | null;
   speechKey: string | null;
@@ -870,6 +886,8 @@ export function AvatarStage({
   theme?: "default" | "classroom" | "studio";
   audioLevelRef?: React.RefObject<number>;
   audioPlaybackRef?: React.RefObject<AudioPlaybackSnapshot>;
+  blinkDurationSeconds?: number;
+  blinkIntervalSeconds?: number;
 }) {
   const speakingUntil = useRef(0);
   const view = AVATAR_VIEWS[theme];
@@ -939,6 +957,8 @@ export function AvatarStage({
             avatarState={avatarState}
             audioLevelRef={audioLevelRef}
             audioPlaybackRef={audioPlaybackRef}
+            blinkDurationSeconds={blinkDurationSeconds}
+            blinkIntervalSeconds={blinkIntervalSeconds}
             speechKey={speechKey}
             speechText={speechText}
             speakingUntil={speakingUntil}

@@ -39,8 +39,28 @@ class ManualQuestionRequest(BaseModel):
     author_name: str | None = Field(default="Demo kullanici", max_length=255)
 
 
+PetVariant = Literal["screen_touch", "yarn", "box"]
+
+
+class LiveDisplaySettingsRead(BaseModel):
+    live_pet_enabled: bool
+    live_pet_variant: PetVariant
+    live_pet_animation_seconds: float
+    live_pet_interval_seconds: float
+    live_pet_size_px: int
+    avatar_blink_interval_seconds: float
+    avatar_blink_duration_seconds: float
+
+
 class AdminSettingsUpdate(BaseModel):
     tts_enabled: bool | None = None
+    live_pet_enabled: bool | None = None
+    live_pet_variant: PetVariant | None = None
+    live_pet_animation_seconds: float | None = Field(default=None, ge=1.5, le=12)
+    live_pet_interval_seconds: float | None = Field(default=None, ge=15, le=300)
+    live_pet_size_px: int | None = Field(default=None, ge=50, le=180)
+    avatar_blink_interval_seconds: float | None = Field(default=None, ge=3, le=12)
+    avatar_blink_duration_seconds: float | None = Field(default=None, ge=0.1, le=0.5)
 
 
 class AdminSettingsRead(BaseModel):
@@ -48,6 +68,13 @@ class AdminSettingsRead(BaseModel):
     tts_provider: str
     tts_model: str
     tts_voice: str
+    live_pet_enabled: bool
+    live_pet_variant: PetVariant
+    live_pet_animation_seconds: float
+    live_pet_interval_seconds: float
+    live_pet_size_px: int
+    avatar_blink_interval_seconds: float
+    avatar_blink_duration_seconds: float
 
 
 class DocumentRead(BaseModel):
@@ -176,6 +203,7 @@ class LiveStateRead(BaseModel):
     answer_ready_count: int
     speech_queue_size: int
     active_streams: int
+    display_settings: LiveDisplaySettingsRead
     generated_at: datetime
 
 

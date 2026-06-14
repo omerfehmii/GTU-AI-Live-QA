@@ -1,12 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play } from "lucide-react";
 
 import { TypewriterText } from "@/components/typewriter-text";
 import { useLiveStage } from "@/components/use-live-stage";
+import type { PetVariant } from "@/lib/types";
 
 const AvatarStage = dynamic(
   () => import("@/components/avatar-stage").then((module) => module.AvatarStage),
@@ -26,6 +28,22 @@ const STATUS_LABEL: Record<string, string> = {
   listening: "Dinliyor",
 };
 
+const PET_SPRITES: Record<PetVariant, string> = {
+  box: "/pets/cat-box-sprite.png",
+  screen_touch: "/pets/cat-screen-touch-sprite.png",
+  yarn: "/pets/cat-yarn-sprite.png",
+};
+
+const DEFAULT_DISPLAY_SETTINGS = {
+  avatar_blink_duration_seconds: 0.22,
+  avatar_blink_interval_seconds: 6.8,
+  live_pet_animation_seconds: 6,
+  live_pet_enabled: true,
+  live_pet_interval_seconds: 120,
+  live_pet_size_px: 100,
+  live_pet_variant: "screen_touch" as PetVariant,
+};
+
 export function LiveStageWarm() {
   const {
     liveState,
@@ -43,6 +61,44 @@ export function LiveStageWarm() {
   const isSpeaking = effectiveAvatarState === "speaking";
   const statusLabel = STATUS_LABEL[effectiveAvatarState] ?? "Bekleniyor";
   const queueSize = liveState.queue_size;
+  const displaySettings = liveState.display_settings ?? DEFAULT_DISPLAY_SETTINGS;
+  const isBoxPet = displaySettings.live_pet_variant === "box";
+  const [isBoxPetActive, setIsBoxPetActive] = useState(false);
+  const petStyle = {
+    "--lw-pet-duration": `${displaySettings.live_pet_animation_seconds}s`,
+    "--lw-pet-size": `${displaySettings.live_pet_size_px}px`,
+  } as CSSProperties;
+
+  useEffect(() => {
+    if (!displaySettings.live_pet_enabled || !isBoxPet) {
+      setIsBoxPetActive(false);
+      return;
+    }
+
+    const playMs = Math.max(displaySettings.live_pet_animation_seconds * 1000, 1200);
+    const intervalMs = Math.max(displaySettings.live_pet_interval_seconds * 1000, playMs + 1000);
+    let activeTimeoutId: number | null = null;
+
+    const playOnce = () => {
+      setIsBoxPetActive(true);
+      activeTimeoutId = window.setTimeout(() => {
+        setIsBoxPetActive(false);
+      }, playMs);
+    };
+
+    const intervalId = window.setInterval(playOnce, intervalMs);
+    return () => {
+      window.clearInterval(intervalId);
+      if (activeTimeoutId !== null) {
+        window.clearTimeout(activeTimeoutId);
+      }
+    };
+  }, [
+    displaySettings.live_pet_animation_seconds,
+    displaySettings.live_pet_enabled,
+    displaySettings.live_pet_interval_seconds,
+    isBoxPet,
+  ]);
 
   return (
     <main className="lw-canvas">
@@ -69,6 +125,8 @@ export function LiveStageWarm() {
               audioDurationMs={playbackItem?.audio_duration_ms ?? null}
               audioLevelRef={audioLevelRef}
               audioPlaybackRef={audioPlaybackRef}
+              blinkDurationSeconds={displaySettings.avatar_blink_duration_seconds}
+              blinkIntervalSeconds={displaySettings.avatar_blink_interval_seconds}
               speechKey={speechKey}
               speechText={visibleSpeechText}
               state={effectiveAvatarState}
@@ -135,6 +193,17 @@ export function LiveStageWarm() {
           </div>
         </div>
       </div>
+
+      {displaySettings.live_pet_enabled && (
+        <div className={`lw-pet lw-pet-${displaySettings.live_pet_variant}`} aria-hidden="true" style={petStyle}>
+          <img
+            className={isBoxPet && isBoxPetActive ? "is-active" : undefined}
+            src={PET_SPRITES[displaySettings.live_pet_variant]}
+            alt=""
+            draggable={false}
+          />
+        </div>
+      )}
     </main>
   );
 }

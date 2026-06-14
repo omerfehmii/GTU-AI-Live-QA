@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.5.11)  14 JUN 2026 12:44
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.5.11)  14 JUN 2026 19:08
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -196,7 +196,6 @@ File: puenc.def 2024-11-05 v7.01l Hyperref: PDF Unicode definition (HO)
 Now handling font encoding PU ...
 ... no UTF-8 mapping file for font encoding PU
 )
-Package hyperref Info: Option `colorlinks' set `false' on input line 4040.
 Package hyperref Info: Hyper figures OFF on input line 4157.
 Package hyperref Info: Link nesting OFF on input line 4162.
 Package hyperref Info: Hyper index ON on input line 4165.
@@ -1202,14 +1201,14 @@ LaTeX Font Info:    ... okay on input line 86.
 * layout: <same size as paper>
 * layoutoffset:(h,v)=(0.0pt,0.0pt)
 * modes: 
-* h-part:(L,W,R)=(113.81102pt, 412.56497pt, 71.13188pt)
+* h-part:(L,W,R)=(92.47145pt, 412.56497pt, 92.47145pt)
 * v-part:(T,H,B)=(71.13188pt, 702.78308pt, 71.13188pt)
 * \paperwidth=597.50787pt
 * \paperheight=845.04684pt
 * \textwidth=412.56497pt
 * \textheight=702.78308pt
-* \oddsidemargin=41.54103pt
-* \evensidemargin=41.54103pt
+* \oddsidemargin=20.20146pt
+* \evensidemargin=20.20146pt
 * \topmargin=-38.1381pt
 * \headheight=12.0pt
 * \headsep=25.0pt
@@ -1485,7 +1484,7 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 Here is how much of TeX's memory you used:
  33925 strings out of 474662
  643989 string characters out of 5751109
- 1426956 words of memory out of 5000000
+ 1426940 words of memory out of 5000000
  56275 multiletter control sequences out of 15000+600000
  592389 words of font info for 61 fonts, out of 8000000 for 9000
  319 hyphenation exceptions out of 8191
@@ -1498,7 +1497,7 @@ Users/omer/Library/texmf/fonts/type1/public/txfonts/t1xtt.pfb></Users/omer/Libr
 ary/texmf/fonts/type1/public/newtx/ztmb.pfb></Users/omer/Library/texmf/fonts/ty
 pe1/public/newtx/ztmr.pfb></Users/omer/Library/texmf/fonts/type1/public/newtx/z
 tmri.pfb>
-Output written on main.pdf (34 pages, 1466452 bytes).
+Output written on main.pdf (34 pages, 1466749 bytes).
 PDF statistics:
  592 PDF objects out of 1000 (max. 8388607)
  533 compressed objects within 6 object streams

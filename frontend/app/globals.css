@@ -1209,6 +1209,143 @@ input[type="file"]::file-selector-button:hover {
   overflow-wrap: anywhere;
 }
 
+.settings-controls {
+  display: grid;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.settings-controls select {
+  width: 100%;
+  margin-top: var(--space-xs);
+}
+
+.range-field {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.range-field > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.range-field strong {
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.range-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* ─── Admin guided flow ─── */
+.section-lead {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  max-width: 64ch;
+  margin: calc(-1 * var(--space-sm)) 0 var(--space-lg);
+}
+
+.guided-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.guided-step {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.guided-step .step-num {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  border: 1px solid rgba(74, 227, 207, 0.3);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.guided-step .step-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.guided-step .step-copy strong {
+  font-size: 0.95rem;
+}
+
+.guided-step .step-copy span {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.guided-step .btn {
+  white-space: nowrap;
+}
+
+.admin-advanced {
+  margin-top: var(--space-lg);
+  border-top: 1px solid var(--glass-border);
+  padding-top: var(--space-md);
+}
+
+.admin-advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+  list-style: none;
+  user-select: none;
+}
+
+.admin-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-advanced > summary::before {
+  content: "▸";
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.admin-advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+@media (max-width: 640px) {
+  .guided-step {
+    grid-template-columns: auto 1fr;
+  }
+  .guided-step .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 
 /* ─── OBS Canvas Streamer Layout (Cinematic Glassmorphic) ─── */
 body:has(.obs-canvas) {
@@ -1693,6 +1830,7 @@ body:has(.lw-canvas) nextjs-portal { display: none !important; }
   --lw-accent-ink: #8A4527;
   --lw-card: #FFFDF9;
   --lw-line: rgba(60, 45, 30, 0.10);
+  --lw-footer-line-offset: calc(clamp(22px, 3.2vh, 46px) + clamp(12px, 1.6vh, 18px) + clamp(19.2px, 1.472vw, 24px) + 1px);
 
   position: relative;
   width: 100vw;
@@ -2037,8 +2175,53 @@ body:has(.lw-canvas) nextjs-portal { display: none !important; }
   color: var(--lw-faint);
 }
 
+.lw-pet {
+  position: absolute;
+  right: clamp(18px, 2.6vw, 44px);
+  bottom: clamp(14px, 2.2vh, 28px);
+  z-index: 6;
+  width: clamp(58px, var(--lw-pet-size, 100px), 150px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 10px rgba(80, 50, 22, 0.18));
+}
+
+.lw-pet.lw-pet-box {
+  bottom: var(--lw-footer-line-offset);
+}
+
+.lw-pet img {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: none;
+  image-rendering: pixelated;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.lw-pet:not(.lw-pet-box) img {
+  animation: lwPetFrames var(--lw-pet-duration, 6s) steps(23) infinite;
+}
+
+.lw-pet-box img.is-active {
+  animation: lwPetFrames var(--lw-pet-duration, 6s) steps(23) 1;
+}
+
+@keyframes lwPetFrames {
+  to {
+    transform: translate3d(-95.833333%, 0, 0);
+  }
+}
+
 @media (max-width: 1024px) {
   .lw-body { gap: 22px; }
   .lw-avatar-card { width: 40%; }
   .lw-video { flex-basis: 38%; }
+  .lw-pet {
+    right: clamp(12px, 4vw, 22px);
+    bottom: clamp(10px, 2.4vh, 18px);
+    width: clamp(50px, calc(var(--lw-pet-size, 100px) * 0.78), 110px);
+  }
 }
