@@ -1,0 +1,64 @@
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{Abstract}{iv}{chapter*.1}%
+\contentsline {chapter}{Özet}{v}{chapter*.2}%
+\contentsline {chapter}{Acknowledgement}{vi}{chapter*.3}%
+\contentsline {chapter}{List of Symbols and Abbreviations}{vii}{chapter*.4}%
+\contentsline {chapter}{Contents}{ix}{chapter*.5}%
+\contentsline {chapter}{List of Figures}{x}{chapter*.6}%
+\contentsline {chapter}{List of Tables}{xi}{chapter*.7}%
+\vspace {18pt}
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Problem Definition}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Motivation}{1}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Project Objectives}{2}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Scope}{2}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Contributions}{3}{section.1.5}%
+\contentsline {section}{\numberline {1.6}Report Organization}{3}{section.1.6}%
+\contentsline {chapter}{\numberline {2}Background}{4}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Retrieval-Augmented Generation}{4}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Dense Embeddings and Vector Search}{4}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Hybrid Retrieval}{4}{section.2.3}%
+\contentsline {section}{\numberline {2.4}Large Language Models for Institutional Answers}{5}{section.2.4}%
+\contentsline {section}{\numberline {2.5}Live Question Answering}{5}{section.2.5}%
+\contentsline {section}{\numberline {2.6}Technology Stack}{5}{section.2.6}%
+\contentsline {section}{\numberline {2.7}Related Work and Documentation}{5}{section.2.7}%
+\contentsline {chapter}{\numberline {3}Methodology}{7}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Source Collection Strategy}{7}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Archive and Index Pipeline}{7}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Chunking and Embeddings}{8}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Retrieval Scoring}{8}{section.3.4}%
+\contentsline {section}{\numberline {3.5}Answer Generation}{8}{section.3.5}%
+\contentsline {section}{\numberline {3.6}Live Processing Pipeline}{9}{section.3.6}%
+\contentsline {section}{\numberline {3.7}Evaluation Methodology}{9}{section.3.7}%
+\contentsline {chapter}{\numberline {4}System Design and Implementation}{10}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Overall Architecture}{10}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Backend API}{10}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Database Model}{11}{section.4.3}%
+\contentsline {section}{\numberline {4.4}Provider Configuration}{12}{section.4.4}%
+\contentsline {section}{\numberline {4.5}Admin Console}{12}{section.4.5}%
+\contentsline {section}{\numberline {4.6}Public Dashboard}{12}{section.4.6}%
+\contentsline {section}{\numberline {4.7}Live Broadcast Stage}{12}{section.4.7}%
+\contentsline {section}{\numberline {4.8}Deployment Topology}{13}{section.4.8}%
+\contentsline {section}{\numberline {4.9}Implementation Status}{13}{section.4.9}%
+\contentsline {chapter}{\numberline {5}Experiments and Evaluation}{14}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Evaluation Setup}{14}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Evaluation Questions}{14}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Metrics}{14}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Results}{15}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Per-Category Observations}{15}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Latency Analysis}{16}{section.5.6}%
+\contentsline {section}{\numberline {5.7}Failure and Weakness Analysis}{16}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Automated Tests}{16}{section.5.8}%
+\contentsline {section}{\numberline {5.9}Discussion}{17}{section.5.9}%
+\contentsline {chapter}{\numberline {6}Conclusion and Future Work}{18}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Conclusion}{18}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Limitations}{18}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Future Work}{19}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Final Remarks}{19}{section.6.4}%
+\vspace {18pt}
+\contentsline {chapter}{Bibliography}{20}{chapter*.8}%
+\contentsline {chapter}{\numberline {7}Appendices}{21}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Local Development Commands}{21}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Important API Endpoints}{21}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Evaluation Cases}{21}{section.7.3}%
+\contentsline {section}{\numberline {7.4}Environment Variables}{21}{section.7.4}%

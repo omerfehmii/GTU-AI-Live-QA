@@ -1,0 +1,55 @@
+\chapter{Introduction}
+
+Universities publish important information across many official channels: department pages, candidate portals, academic calendars, regulations, student guides, policy documents, and PDF files. A student or candidate who asks a simple question may therefore need to search several pages before finding an answer. This problem becomes more visible in a live broadcast setting, where questions arrive continuously and answers must be short, understandable, and reliable.
+
+This project addresses that problem for Gebze Technical University (GTU) by developing an AI/RAG-based live question-answer system. The system receives questions from a manual web form or from YouTube live chat, retrieves relevant official GTU context, generates a grounded Turkish answer, and presents the result on a live broadcast screen with optional text-to-speech and avatar animation.
+
+\section{Problem Definition}
+
+Large language models can produce fluent answers, but a university-facing assistant must satisfy stricter requirements than a generic chatbot. It should avoid fabricating institution-specific information, should prefer official sources, should answer in a style suitable for students and candidates, and should keep enough internal trace data for debugging. In a live broadcast scenario, it must also handle incoming questions as a queue and keep the visual state synchronized with speech playback.
+
+The main problem can be summarized as follows:
+
+\begin{quote}
+How can official GTU web and PDF sources be transformed into a live, grounded, Turkish question-answer experience that is reliable enough for a controlled broadcast demo?
+\end{quote}
+
+\section{Motivation}
+
+The project was narrowed from a general question-answer tool into a live YouTube broadcast assistant. This scope is motivated by three observations. First, candidate and student questions are often repetitive, but their answers depend on institutional documents that change over time. Second, live streams create a different interaction pattern from a search page: the answer must be concise and must arrive while the audience is still engaged. Third, retrieval traces and admin tooling are necessary because the operator must know whether the system has enough source coverage before connecting a public stream.
+
+\section{Project Objectives}
+
+The project has the following objectives:
+
+\begin{enumerate}
+    \item Collect official GTU pages and PDF documents from a configurable source profile.
+    \item Archive raw and parsed sources locally so repeated runs do not depend on re-downloading the same content.
+    \item Split documents into chunks and index them with embeddings for semantic retrieval.
+    \item Combine vector retrieval with lexical and intent-based scoring for stronger source precision.
+    \item Generate Turkish answers that are grounded in retrieved GTU context and avoid exposing internal source traces to viewers.
+    \item Process questions from both manual input and YouTube live chat.
+    \item Provide an admin console for ingest, indexing, stream connection, runtime TTS control, and source monitoring.
+    \item Present the current question and answer on a live stage with avatar, speech, and queue-aware playback state.
+    \item Evaluate retrieval and answer quality with a repeatable GTU-specific question set.
+\end{enumerate}
+
+\section{Scope}
+
+The implemented system is a working prototype for a controlled demo rather than a fully autonomous institutional production service. It supports official GTU web pages, GTU PDF documents, manual questions, YouTube live chat polling, LLM-based answer generation, deterministic fallback behavior, TTS job handling, and a web-based live scene. It does not yet include a large-scale continuous crawling scheduler, authenticated university system integration, human approval workflow, or long-term analytics dashboard.
+
+\section{Contributions}
+
+The main contributions of this project are:
+
+\begin{itemize}
+    \item an end-to-end RAG pipeline specialized for official GTU sources,
+    \item a hybrid retrieval strategy that combines embeddings, keyword matching, title and URL evidence, document-type boosts, and intent-specific bonuses,
+    \item a live question queue that works with manual questions and YouTube live chat messages,
+    \item a broadcast-oriented frontend with avatar state, audio playback, TTS synchronization, and live-state polling,
+    \item a repeatable 12-question evaluation suite with source hit, answer keyword hit, fallback, latency, and confidence metrics.
+\end{itemize}
+
+\section{Report Organization}
+
+Chapter 2 gives background on retrieval-augmented generation, embeddings, vector search, and live question answering. Chapter 3 explains the methodology used for source collection, indexing, retrieval, answer generation, and evaluation. Chapter 4 describes the system design and implementation. Chapter 5 presents the evaluation results and discusses observed limitations. Chapter 6 concludes the report and lists future work.

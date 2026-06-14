@@ -10,6 +10,7 @@ import {
   DoubleSide,
   Euler,
   Group,
+  LinearMipmapLinearFilter,
   MathUtils,
   Mesh,
   Object3D,
@@ -25,7 +26,7 @@ import type { AvatarState } from "@/lib/types";
 
 const MODEL_PATH = "/avatars/stylized-cartoon-girl-rigged-character/source/MJ.fbx";
 const MODEL_TEXTURE_PATH = "/avatars/stylized-cartoon-girl-rigged-character/textures/";
-const HAIR_TEXTURE_PATH = `${MODEL_TEXTURE_PATH}model.png`;
+const HAIR_TEXTURE_PATH = `${MODEL_TEXTURE_PATH}model-soft.png`;
 const AVATAR_VIEWS = {
   default: {
     cameraDistance: 2.85,
@@ -55,6 +56,20 @@ const AVATAR_VIEWS = {
 
 const SPEECH_MOUTH_GAIN = 1.24;
 const SPEECH_PULSE_GAIN = 1.42;
+const SPEECH_ARM_GESTURE_GAIN = 0.38;
+
+type GestureRig = {
+  leftClavicle?: Object3D;
+  leftForeArm?: Object3D;
+  leftHand?: Object3D;
+  leftUpperArm?: Object3D;
+  rightClavicle?: Object3D;
+  rightForeArm?: Object3D;
+  rightHand?: Object3D;
+  rightUpperArm?: Object3D;
+};
+
+type GestureRigRest = Record<keyof GestureRig, Euler>;
 
 type PreparedAvatar = {
   scene: Object3D;
@@ -92,6 +107,32 @@ type VisemeTargets = {
 };
 
 const morphTargetNameCache = new WeakMap<MorphMesh, Map<string, string | null>>();
+
+type TunableHairMaterial = {
+  alphaHash?: boolean;
+  alphaMap?: Texture | null;
+  alphaTest?: number;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
+  color?: { set: (color: string) => void };
+  depthTest?: boolean;
+  depthWrite?: boolean;
+  emissive?: { set: (color: string) => void };
+  emissiveIntensity?: number;
+  forceSinglePass?: boolean;
+  map?: Texture | null;
+  metalness?: number;
+  needsUpdate?: boolean;
+  opacity?: number;
+  premultipliedAlpha?: boolean;
+  reflectivity?: number;
+  roughness?: number;
+  shininess?: number;
+  side?: number;
+  specularColor?: { set: (color: string) => void };
+  specularIntensity?: number;
+  transparent?: boolean;
+};
 
 function normalizeMorphName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -185,6 +226,25 @@ function findObjectByPartialName(scene: Object3D, patterns: string[]): Object3D 
   return match;
 }
 
+function restRotation(bone?: Object3D) {
+  return bone?.rotation.clone() ?? new Euler();
+}
+
+function dampBoneRotation(
+  bone: Object3D | undefined,
+  rest: Euler,
+  offset: { x?: number; y?: number; z?: number },
+  easing = 0.08,
+) {
+  if (!bone) {
+    return;
+  }
+
+  bone.rotation.x = MathUtils.lerp(bone.rotation.x, rest.x + (offset.x ?? 0), easing);
+  bone.rotation.y = MathUtils.lerp(bone.rotation.y, rest.y + (offset.y ?? 0), easing);
+  bone.rotation.z = MathUtils.lerp(bone.rotation.z, rest.z + (offset.z ?? 0), easing);
+}
+
 function applyRelaxedArmPose(scene: Object3D) {
   const leftArm = findObjectByPartialName(scene, ["leftarm_", "leftupperarm", "l_upperarm"]);
   const rightArm = findObjectByPartialName(scene, ["rightarm_", "rightupperarm", "r_upperarm"]);
@@ -205,9 +265,58 @@ function applyRelaxedArmPose(scene: Object3D) {
   }
 }
 
-function configureAvatarMaterials(scene: Object3D, hairTexture: Texture) {
+function configureHairTexture(hairTexture: Texture) {
   hairTexture.colorSpace = SRGBColorSpace;
+  hairTexture.generateMipmaps = true;
+  hairTexture.minFilter = LinearMipmapLinearFilter;
+  hairTexture.anisotropy = Math.max(hairTexture.anisotropy, 8);
   hairTexture.needsUpdate = true;
+}
+
+function tuneHairMaterial(material: TunableHairMaterial, hairTexture: Texture) {
+  material.map = hairTexture;
+  material.alphaMap = null;
+  material.opacity = 1;
+  material.transparent = false;
+  material.alphaHash = false;
+  material.alphaTest = 0.125;
+  material.depthTest = true;
+  material.depthWrite = true;
+  material.premultipliedAlpha = false;
+  material.forceSinglePass = true;
+  material.side = DoubleSide;
+  material.color?.set("#f7efe6");
+  material.emissive?.set("#21150f");
+  if ("emissiveIntensity" in material) {
+    material.emissiveIntensity = 0.045;
+  }
+  if ("metalness" in material) {
+    material.metalness = 0;
+  }
+  if ("roughness" in material) {
+    material.roughness = 0.72;
+  }
+  if ("specularIntensity" in material) {
+    material.specularIntensity = 0.28;
+  }
+  material.specularColor?.set("#6b4a36");
+  if ("shininess" in material) {
+    material.shininess = 18;
+  }
+  if ("reflectivity" in material) {
+    material.reflectivity = 0.16;
+  }
+  if ("clearcoat" in material) {
+    material.clearcoat = 0.08;
+  }
+  if ("clearcoatRoughness" in material) {
+    material.clearcoatRoughness = 0.88;
+  }
+  material.needsUpdate = true;
+}
+
+function configureAvatarMaterials(scene: Object3D, hairTexture: Texture) {
+  configureHairTexture(hairTexture);
 
   scene.traverse((child) => {
     if (!("isMesh" in child) || !(child as Mesh).isMesh) {
@@ -224,7 +333,8 @@ function configureAvatarMaterials(scene: Object3D, hairTexture: Texture) {
 
       const materialName = material.name.toLowerCase();
       const meshName = mesh.name.toLowerCase();
-      const isHairMaterial = meshName.includes("modelmesh") || materialName.includes("lambert10");
+      const isHairMaterial =
+        meshName.includes("modelmesh") || meshName.includes("model:mesh") || materialName.includes("lambert10");
       const isCutoutMaterial =
         isHairMaterial ||
         materialName.includes("eyelash") ||
@@ -232,19 +342,8 @@ function configureAvatarMaterials(scene: Object3D, hairTexture: Texture) {
         materialName.includes("occlusion");
 
       if (isHairMaterial && "map" in material) {
-        material.map = hairTexture;
-        material.opacity = 1;
-        material.depthWrite = true;
-        material.transparent = false;
-        material.alphaTest = 0.14;
-        material.side = DoubleSide;
-        if ("alphaMap" in material) {
-          material.alphaMap = null;
-        }
-        const colorMaterial = material as typeof material & { color?: { set: (color: string) => void } };
-        colorMaterial.color?.set("#ffffff");
+        tuneHairMaterial(material as TunableHairMaterial, hairTexture);
         mesh.renderOrder = 2;
-        material.needsUpdate = true;
         continue;
       }
 
@@ -390,6 +489,32 @@ function AvatarModel({
   );
   const headRestRotation = useMemo(() => headBone?.rotation.clone() ?? new Euler(), [headBone]);
   const neckRestRotation = useMemo(() => neckBone?.rotation.clone() ?? new Euler(), [neckBone]);
+  const gestureRig = useMemo<GestureRig>(
+    () => ({
+      leftClavicle: findObjectByPartialName(prepared.scene, ["cc_base_l_clavicle", "l_clavicle"]),
+      leftForeArm: findObjectByPartialName(prepared.scene, ["cc_base_l_forearm", "l_forearm"]),
+      leftHand: findObjectByPartialName(prepared.scene, ["cc_base_l_hand", "l_hand"]),
+      leftUpperArm: findObjectByPartialName(prepared.scene, ["cc_base_l_upperarm", "l_upperarm"]),
+      rightClavicle: findObjectByPartialName(prepared.scene, ["cc_base_r_clavicle", "r_clavicle"]),
+      rightForeArm: findObjectByPartialName(prepared.scene, ["cc_base_r_forearm", "r_forearm"]),
+      rightHand: findObjectByPartialName(prepared.scene, ["cc_base_r_hand", "r_hand"]),
+      rightUpperArm: findObjectByPartialName(prepared.scene, ["cc_base_r_upperarm", "r_upperarm"]),
+    }),
+    [prepared.scene],
+  );
+  const gestureRigRest = useMemo<GestureRigRest>(
+    () => ({
+      leftClavicle: restRotation(gestureRig.leftClavicle),
+      leftForeArm: restRotation(gestureRig.leftForeArm),
+      leftHand: restRotation(gestureRig.leftHand),
+      leftUpperArm: restRotation(gestureRig.leftUpperArm),
+      rightClavicle: restRotation(gestureRig.rightClavicle),
+      rightForeArm: restRotation(gestureRig.rightForeArm),
+      rightHand: restRotation(gestureRig.rightHand),
+      rightUpperArm: restRotation(gestureRig.rightUpperArm),
+    }),
+    [gestureRig],
+  );
   const visemeTimeline = useMemo(() => buildVisemeTimeline(speechText), [speechText]);
   const estimatedDurationMs = useMemo(
     () => estimateSpeechDurationMs(speechText, audioDurationMs),
@@ -517,6 +642,95 @@ function AvatarModel({
         0.06,
       );
     }
+
+    const gesturePulse = speaking ? Math.pow(visemeCycleFromTime(elapsed, 2.15, speechProgress * 9.5), 2.2) : 0;
+    const supportPulse = speaking ? Math.pow(visemeCycleFromTime(elapsed, 1.3, speechProgress * 5.8 + 1.4), 2.4) : 0;
+    const rightGesture = speaking
+      ? MathUtils.clamp((0.18 + speechLevel * 0.82) * (0.42 + gesturePulse * 0.58) * SPEECH_ARM_GESTURE_GAIN, 0, 0.36)
+      : 0;
+    const leftGesture = rightGesture * (0.28 + supportPulse * 0.16);
+    const handWave = Math.sin(elapsed * 4.4 + speechProgress * 10) * rightGesture;
+
+    dampBoneRotation(
+      gestureRig.rightClavicle,
+      gestureRigRest.rightClavicle,
+      {
+        x: -0.018 * rightGesture,
+        y: -0.012 * rightGesture,
+        z: -0.024 * rightGesture,
+      },
+      0.07,
+    );
+    dampBoneRotation(
+      gestureRig.rightUpperArm,
+      gestureRigRest.rightUpperArm,
+      {
+        x: -0.052 * rightGesture,
+        y: 0.018 * handWave,
+        z: 0.18 * rightGesture,
+      },
+      0.075,
+    );
+    dampBoneRotation(
+      gestureRig.rightForeArm,
+      gestureRigRest.rightForeArm,
+      {
+        x: 0.03 * rightGesture,
+        y: -0.032 * handWave,
+        z: 0.24 * rightGesture,
+      },
+      0.09,
+    );
+    dampBoneRotation(
+      gestureRig.rightHand,
+      gestureRigRest.rightHand,
+      {
+        x: 0.035 * rightGesture,
+        y: 0.06 * handWave,
+        z: -0.11 * rightGesture + 0.025 * handWave,
+      },
+      0.11,
+    );
+    dampBoneRotation(
+      gestureRig.leftClavicle,
+      gestureRigRest.leftClavicle,
+      {
+        x: -0.008 * leftGesture,
+        y: 0.006 * leftGesture,
+        z: 0.012 * leftGesture,
+      },
+      0.06,
+    );
+    dampBoneRotation(
+      gestureRig.leftUpperArm,
+      gestureRigRest.leftUpperArm,
+      {
+        x: -0.018 * leftGesture,
+        y: -0.012 * handWave,
+        z: -0.07 * leftGesture,
+      },
+      0.07,
+    );
+    dampBoneRotation(
+      gestureRig.leftForeArm,
+      gestureRigRest.leftForeArm,
+      {
+        x: 0.018 * leftGesture,
+        y: 0.014 * handWave,
+        z: -0.085 * leftGesture,
+      },
+      0.08,
+    );
+    dampBoneRotation(
+      gestureRig.leftHand,
+      gestureRigRest.leftHand,
+      {
+        x: 0.018 * leftGesture,
+        y: -0.026 * handWave,
+        z: 0.055 * leftGesture,
+      },
+      0.1,
+    );
 
     const blink = Math.max(0, Math.sin(elapsed * 0.8 + blinkSeed.current) - 0.94) * 14;
     const consonantClosure = Math.max(

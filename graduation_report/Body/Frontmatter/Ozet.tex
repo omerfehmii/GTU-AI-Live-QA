@@ -1,0 +1,13 @@
+\chapter*{Özet}
+\addcontentsline{toc}{chapter}{Özet}
+
+%% Edit below this line
+Üniversite adayları, öğrenciler ve canlı yayın izleyicileri çoğu zaman cevabı resmi web sayfaları, yönetmelikler, kılavuzlar ve PDF belgeleri içinde dağınık halde bulunan kuruma özgü sorular sorar. Genel amaçlı sohbet sistemleri akıcı cevap üretebilse de, cevapların güncel kurumsal bağlama dayanması ve canlı yayın temposuna uygun olması ayrıca tasarlanmalıdır. Bu bitirme projesinde Gebze Teknik Üniversitesi (GTÜ) için yapay zeka ve RAG tabanlı bir canlı soru-cevap sistemi geliştirilmiştir. Sistem resmi GTÜ web sayfalarını ve PDF belgelerini toplar, yerel arşive kaydeder, içerikleri parçalara ayırır, her soru için ilgili bağlamı geri getirir ve büyük dil modeli ile kısa, anlaşılır Türkçe cevaplar üretir. Standart web arayüzünün yanında admin konsolu, YouTube canlı sohbet entegrasyonu, kuyruktaki soruları işleyen worker süreci, metinden sese üretim ve tarayıcı tabanlı avatar yayın sahnesi de geliştirilmiştir.
+
+Backend tarafı FastAPI, SQLAlchemy, üretim ortamında PostgreSQL ve pgvector, yerel testlerde ise SQLite uyumlu bir yapı ile uygulanmıştır. Frontend tarafında Next.js, React, Three.js ve canlı durum yoklama modeli kullanılmıştır. Geri getirme katmanı anlamsal embedding benzerliğini anahtar kelime, başlık, URL, belge türü ve niyet odaklı puanlarla birleştirerek resmi GTÜ kaynaklarını cevap üretiminin merkezinde tutar. Sistem 12 soruluk bir değerlendirme setiyle ölçülmüştür. Son kaydedilen koşuda kaynak isabet oranı 83.33\%, ilk sıradaki kaynak isabet oranı 58.33\%, cevap anahtar kelime isabet oranı 100\%, fallback oranı 0\% ve medyan gecikme 10.07 saniye olarak ölçülmüştür. Sonuçlar sistemin kontrollü canlı demo için kullanılabilir olduğunu, ancak ilk sıra kaynak sıralama başarımı ve gecikme alanlarında iyileştirme gerektirdiğini göstermektedir.
+
+%% Until here
+\vfill
+%% Edit after {Anahtar Kelimeler:}
+\textbf{Anahtar Kelimeler:} geri getirme destekli üretim, büyük dil modelleri, canlı soru-cevap, Gebze Teknik Üniversitesi, YouTube canlı sohbet, metinden sese.
+\clearpage

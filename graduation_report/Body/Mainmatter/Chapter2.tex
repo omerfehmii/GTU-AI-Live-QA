@@ -1,0 +1,57 @@
+\chapter{Background}
+
+This chapter summarizes the technical ideas and tools that support the project. The system combines retrieval-augmented generation, embedding-based search, lexical retrieval signals, web/PDF ingestion, and live web application design.
+
+\section{Retrieval-Augmented Generation}
+
+Retrieval-augmented generation (RAG) connects a generative language model to an external knowledge source. Instead of asking the model to answer only from its parameters, the system first retrieves relevant passages and then sends those passages with the user question to the model. This approach is especially useful for domain-specific information because the system can update its evidence corpus without retraining the model \cite{lewis2020rag}.
+
+For the GTU assistant, RAG is necessary because the expected answers include current university pages, regulations, guides, and policy documents. The language model is used for wording and summarization, while the retrieval layer is responsible for finding the official context.
+
+\section{Dense Embeddings and Vector Search}
+
+Dense retrieval represents text as a numerical vector. Related texts are placed close to each other in vector space, so the system can search by semantic similarity rather than exact keyword overlap \cite{karpukhin2020dpr}. In this project, each document chunk receives an embedding. At question time, the query receives an embedding as well, and candidate chunks are ranked partly by cosine similarity.
+
+The production-oriented database design uses PostgreSQL with the pgvector extension so that embeddings can be stored and searched inside the relational database \cite{pgvector}. SQLite is also supported for local tests by storing embeddings as JSON arrays and calculating similarity in application code.
+
+\section{Hybrid Retrieval}
+
+Pure vector search can miss details that are explicit in titles, URLs, document numbers, or regulations. For example, a question about ``YN-0001'' or ``academic calendar'' should benefit from exact or near-exact textual evidence. Therefore, the retrieval layer combines semantic similarity with string relevance, title overlap, URL overlap, phrase matching, document-type boosts, and intent-specific bonuses.
+
+This hybrid design reflects the structure of GTU information. Official regulation PDFs often carry document numbers in their filenames. Department and candidate pages include descriptive URL paths. Academic calendar and ECTS pages are better found when the retrieval logic respects those specific tokens.
+
+\section{Large Language Models for Institutional Answers}
+
+The language model receives a GTU-specific system prompt and a compact set of retrieved contexts. The prompt instructs the model to answer in Turkish, keep the first sentence direct, avoid artificial phrases such as ``according to the context'', avoid exposing raw source names or URLs to viewers, and explicitly avoid inventing information when the provided context is weak.
+
+The implementation can use OpenAI directly or OpenRouter through an OpenAI-compatible client. Chat and embedding model names are configurable with environment variables, and deterministic local fallbacks are available when provider keys are missing.
+
+\section{Live Question Answering}
+
+A normal web Q\&A application can answer one request at a time. A live broadcast assistant needs additional state. Questions may be pending, processing, answered, or failed. Answers may wait for TTS generation. The visible stage must know whether the avatar should be idle, thinking, speaking, or showing an error. The system therefore separates answer generation from playback and exposes a live-state endpoint that the frontend polls.
+
+\section{Technology Stack}
+
+Table \ref{tab:technology-stack} summarizes the main technologies used in the project.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{\label{tab:technology-stack}Main technologies used in the system.}
+    \begin{tabularx}{\textwidth}{lX}
+        \toprule
+        Layer & Technologies \\
+        \midrule
+        Backend API & FastAPI, Pydantic, SQLAlchemy, Uvicorn \\
+        Retrieval and data & PostgreSQL, pgvector, SQLite test mode, pypdf, BeautifulSoup \\
+        AI provider layer & OpenAI-compatible client, OpenAI or OpenRouter configuration \\
+        Frontend & Next.js, React, TypeScript, Framer Motion, lucide-react \\
+        Avatar and graphics & Three.js, React Three Fiber, Drei, FBX avatar assets \\
+        Deployment & Docker Compose, Caddy reverse proxy, Redis placeholder service \\
+        Evaluation & Python quality-suite script and JSON report output \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Related Work and Documentation}
+
+The project follows the RAG formulation introduced by Lewis et al. \cite{lewis2020rag} and the dense retrieval direction represented by Dense Passage Retrieval \cite{karpukhin2020dpr}. It also relies on official documentation for FastAPI \cite{fastapi}, Next.js \cite{nextjs}, PostgreSQL \cite{postgresql}, pgvector \cite{pgvector}, YouTube Data API \cite{youtubeapi}, and OpenAI-compatible APIs \cite{openaiapi}. These sources shaped the implementation choices but the final behavior is specialized for the GTU live Q\&A use case.

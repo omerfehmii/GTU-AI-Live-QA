@@ -1,0 +1,304 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated as
+% required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+\datalist[entry]{none/global//global/global/global}
+  \entry{lewis2020rag}{inproceedings}{}{}
+    \name{author}{12}{}{%
+      {{hash=LP}{%
+         family={Lewis},
+         familyi={L\bibinitperiod},
+         given={Patrick},
+         giveni={P\bibinitperiod},
+      }}%
+      {{hash=PE}{%
+         family={Perez},
+         familyi={P\bibinitperiod},
+         given={Ethan},
+         giveni={E\bibinitperiod},
+      }}%
+      {{hash=PA}{%
+         family={Piktus},
+         familyi={P\bibinitperiod},
+         given={Aleksandra},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=PF}{%
+         family={Petroni},
+         familyi={P\bibinitperiod},
+         given={Fabio},
+         giveni={F\bibinitperiod},
+      }}%
+      {{hash=KV}{%
+         family={Karpukhin},
+         familyi={K\bibinitperiod},
+         given={Vladimir},
+         giveni={V\bibinitperiod},
+      }}%
+      {{hash=GN}{%
+         family={Goyal},
+         familyi={G\bibinitperiod},
+         given={Naman},
+         giveni={N\bibinitperiod},
+      }}%
+      {{hash=KH}{%
+         family={K{\"u}ttler},
+         familyi={K\bibinitperiod},
+         given={Heinrich},
+         giveni={H\bibinitperiod},
+      }}%
+      {{hash=LM}{%
+         family={Lewis},
+         familyi={L\bibinitperiod},
+         given={Mike},
+         giveni={M\bibinitperiod},
+      }}%
+      {{hash=tYW}{%
+         prefix={tau},
+         prefixi={t\bibinitperiod},
+         family={Yih},
+         familyi={Y\bibinitperiod},
+         given={Wen},
+         giveni={W\bibinitperiod},
+      }}%
+      {{hash=RT}{%
+         family={Rockt{\"a}schel},
+         familyi={R\bibinitperiod},
+         given={Tim},
+         giveni={T\bibinitperiod},
+      }}%
+      {{hash=RS}{%
+         family={Riedel},
+         familyi={R\bibinitperiod},
+         given={Sebastian},
+         giveni={S\bibinitperiod},
+      }}%
+      {{hash=KD}{%
+         family={Kiela},
+         familyi={K\bibinitperiod},
+         given={Douwe},
+         giveni={D\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{LP+1}
+    \strng{fullhash}{LPPEPAPFKVGNKHLMYWtRTRSKD1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{booktitle}{Advances in Neural Information Processing Systems}
+    \field{title}{Retrieval-Augmented Generation for Knowledge-Intensive NLP
+  Tasks}
+    \verb{url}
+    \verb https://arxiv.org/abs/2005.11401
+    \endverb
+    \field{year}{2020}
+  \endentry
+
+  \entry{karpukhin2020dpr}{inproceedings}{}{}
+    \name{author}{8}{}{%
+      {{hash=KV}{%
+         family={Karpukhin},
+         familyi={K\bibinitperiod},
+         given={Vladimir},
+         giveni={V\bibinitperiod},
+      }}%
+      {{hash=OB}{%
+         family={O{\u{g}}uz},
+         familyi={O\bibinitperiod},
+         given={Barlas},
+         giveni={B\bibinitperiod},
+      }}%
+      {{hash=MS}{%
+         family={Min},
+         familyi={M\bibinitperiod},
+         given={Sewon},
+         giveni={S\bibinitperiod},
+      }}%
+      {{hash=LP}{%
+         family={Lewis},
+         familyi={L\bibinitperiod},
+         given={Patrick},
+         giveni={P\bibinitperiod},
+      }}%
+      {{hash=WL}{%
+         family={Wu},
+         familyi={W\bibinitperiod},
+         given={Ledell},
+         giveni={L\bibinitperiod},
+      }}%
+      {{hash=ES}{%
+         family={Edunov},
+         familyi={E\bibinitperiod},
+         given={Sergey},
+         giveni={S\bibinitperiod},
+      }}%
+      {{hash=CD}{%
+         family={Chen},
+         familyi={C\bibinitperiod},
+         given={Danqi},
+         giveni={D\bibinitperiod},
+      }}%
+      {{hash=tYW}{%
+         prefix={tau},
+         prefixi={t\bibinitperiod},
+         family={Yih},
+         familyi={Y\bibinitperiod},
+         given={Wen},
+         giveni={W\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{KV+1}
+    \strng{fullhash}{KVOBMSLPWLESCDYWt1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{booktitle}{Proceedings of the 2020 Conference on Empirical Methods
+  in Natural Language Processing}
+    \field{pages}{6769\bibrangedash 6781}
+    \field{title}{Dense Passage Retrieval for Open-Domain Question Answering}
+    \verb{url}
+    \verb https://arxiv.org/abs/2004.04906
+    \endverb
+    \field{year}{2020}
+  \endentry
+
+  \entry{pgvector}{online}{}{}
+    \name{author}{1}{}{%
+      {{hash=p}{%
+         family={{pgvector}},
+         familyi={p\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{p1}
+    \strng{fullhash}{p1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{pgvector: Open-source vector similarity search for
+  PostgreSQL}
+    \verb{url}
+    \verb https://github.com/pgvector/pgvector
+    \endverb
+    \field{year}{2026}
+    \field{urlday}{14}
+    \field{urlmonth}{06}
+    \field{urlyear}{2026}
+  \endentry
+
+  \entry{fastapi}{online}{}{}
+    \name{author}{1}{}{%
+      {{hash=F}{%
+         family={{FastAPI}},
+         familyi={F\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{F1}
+    \strng{fullhash}{F1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{FastAPI Documentation}
+    \verb{url}
+    \verb https://fastapi.tiangolo.com/
+    \endverb
+    \field{year}{2026}
+    \field{urlday}{14}
+    \field{urlmonth}{06}
+    \field{urlyear}{2026}
+  \endentry
+
+  \entry{nextjs}{online}{}{}
+    \name{author}{1}{}{%
+      {{hash=V}{%
+         family={{Vercel}},
+         familyi={V\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{V1}
+    \strng{fullhash}{V1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{Next.js Documentation}
+    \verb{url}
+    \verb https://nextjs.org/docs
+    \endverb
+    \field{year}{2026}
+    \field{urlday}{14}
+    \field{urlmonth}{06}
+    \field{urlyear}{2026}
+  \endentry
+
+  \entry{postgresql}{online}{}{}
+    \name{author}{1}{}{%
+      {{hash=P}{%
+         family={{PostgreSQL Global Development Group}},
+         familyi={P\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{P1}
+    \strng{fullhash}{P1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{PostgreSQL Documentation}
+    \verb{url}
+    \verb https://www.postgresql.org/docs/
+    \endverb
+    \field{year}{2026}
+    \field{urlday}{14}
+    \field{urlmonth}{06}
+    \field{urlyear}{2026}
+  \endentry
+
+  \entry{youtubeapi}{online}{}{}
+    \name{author}{1}{}{%
+      {{hash=G}{%
+         family={{Google for Developers}},
+         familyi={G\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{G1}
+    \strng{fullhash}{G1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{YouTube Data API Documentation}
+    \verb{url}
+    \verb https://developers.google.com/youtube/v3
+    \endverb
+    \field{year}{2026}
+    \field{urlday}{14}
+    \field{urlmonth}{06}
+    \field{urlyear}{2026}
+  \endentry
+
+  \entry{openaiapi}{online}{}{}
+    \name{author}{1}{}{%
+      {{hash=O}{%
+         family={{OpenAI}},
+         familyi={O\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{O1}
+    \strng{fullhash}{O1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{OpenAI API Documentation}
+    \verb{url}
+    \verb https://platform.openai.com/docs
+    \endverb
+    \field{year}{2026}
+    \field{urlday}{14}
+    \field{urlmonth}{06}
+    \field{urlyear}{2026}
+  \endentry
+\enddatalist
+\endinput

@@ -1,0 +1,81 @@
+\chapter{Appendices}
+
+\section{Local Development Commands}
+
+The repository includes scripts for both Docker-based and local development. The Docker path starts the complete service stack:
+
+\begin{verbatim}
+cd /Users/omer/Desktop/bitirme
+bash scripts/docker_up.sh
+\end{verbatim}
+
+For local backend development:
+
+\begin{verbatim}
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+\end{verbatim}
+
+For local frontend development:
+
+\begin{verbatim}
+cd frontend
+npm install
+npm run dev
+\end{verbatim}
+
+\section{Important API Endpoints}
+
+\begin{table}[!htbp]
+    \centering
+    \caption{\label{tab:api-endpoints}Representative API endpoints.}
+    \begin{tabularx}{\textwidth}{lX}
+        \toprule
+        Endpoint & Purpose \\
+        \midrule
+        \texttt{GET /api/health} & Health check. \\
+        \texttt{POST /api/questions/manual} & Ask and answer a manual question immediately. \\
+        \texttt{POST /api/questions/manual/queue} & Add a manual question to the live queue. \\
+        \texttt{GET /api/live/state} & Return current broadcast state for the live stage. \\
+        \texttt{POST /api/admin/archive/crawl} & Download and archive official sources. \\
+        \texttt{POST /api/admin/archive/index} & Index archived sources into documents and chunks. \\
+        \texttt{GET /api/admin/archive/stats} & Return archive statistics. \\
+        \texttt{POST /api/streams/youtube/connect} & Connect a YouTube live chat session. \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Evaluation Cases}
+
+The quality suite uses 12 questions. Table \ref{tab:evaluation-cases} gives a compact overview.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{\label{tab:evaluation-cases}Evaluation question categories.}
+    \begin{tabularx}{\textwidth}{llX}
+        \toprule
+        Category & Count & Examples \\
+        \midrule
+        Regulation & 4 & undergraduate duration, graduate regulation, thesis guide, diploma directive \\
+        Web & 3 & ECTS package, academic calendar, regulation page \\
+        Department & 2 & Computer Engineering mission and target student profile \\
+        PDF & 3 & research policy, Erasmus directive, student guide \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Environment Variables}
+
+The main environment variables are:
+
+\begin{itemize}
+    \item \texttt{AI\_PROVIDER}: selects \texttt{openai} or \texttt{openrouter};
+    \item \texttt{OPENAI\_API\_KEY} and \texttt{OPENROUTER\_API\_KEY}: provider keys;
+    \item \texttt{AI\_CHAT\_MODEL} and \texttt{AI\_EMBEDDING\_MODEL}: optional model overrides;
+    \item \texttt{YOUTUBE\_API\_KEY}: key used for live chat polling;
+    \item \texttt{DATABASE\_URL}: database connection string;
+    \item \texttt{TTS\_ENABLED}: runtime default for speech generation.
+\end{itemize}

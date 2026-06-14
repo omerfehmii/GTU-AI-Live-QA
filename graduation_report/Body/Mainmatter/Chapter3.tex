@@ -1,0 +1,91 @@
+\chapter{Methodology}
+
+This chapter explains the approach used to collect official GTU sources, build the retrieval index, generate answers, manage live broadcast state, and evaluate quality.
+
+\section{Source Collection Strategy}
+
+The source profile contains official GTU domains and selected PDF URLs. The seed list prioritizes the main university site, candidate portal, ECTS pages, academic calendar, international pages, department pages, student affairs pages, regulations, and student guides. The crawler can also discover links and PDF files from visited pages, but it only follows URLs that match allowed domains and configured include patterns.
+
+The project intentionally avoids third-party pages, social media content, and forum content. This decision keeps the knowledge base institution-focused and reduces the risk of answering from unofficial information.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{\label{tab:source-profile}Source profile used for the GTU corpus.}
+    \begin{tabularx}{\textwidth}{lX}
+        \toprule
+        Source group & Examples \\
+        \midrule
+        Main and candidate pages & \texttt{www.gtu.edu.tr}, \texttt{aday.gtu.edu.tr} \\
+        Academic information & ECTS package, academic calendar, student affairs pages \\
+        Department pages & Computer, electronics, chemistry, and other GTU department pages \\
+        Regulations and guides & Undergraduate and graduate regulations, thesis writing guide, Erasmus directive \\
+        Student life & Dormitory, transportation, scholarships, candidate FAQ pages \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Archive and Index Pipeline}
+
+The ingestion service uses a two-stage workflow. In the first stage, it crawls or downloads official sources and stores raw files, parsed content, and metadata under a local source archive. In the second stage, it indexes the archived content into the database. This separation makes repeated experiments faster because already downloaded sources can be reused.
+
+HTML pages are parsed with BeautifulSoup. The parser removes common noise nodes such as navigation, scripts, forms, hidden elements, and social or footer blocks. It then selects the most content-rich node using content selectors, heading and paragraph counts, class/id hints, and link-density penalties. PDF documents are parsed with pypdf, and the extracted text is normalized before chunking.
+
+\section{Chunking and Embeddings}
+
+Documents are split into overlapping chunks. The default configuration uses a chunk size of 400 tokens and an overlap of 80 tokens. Overlap helps preserve context near chunk boundaries. Each chunk receives an embedding through the configured provider. If no provider key is available, a deterministic hashed embedding fallback is used so that local tests can still run.
+
+\section{Retrieval Scoring}
+
+At question time, the system normalizes the query and creates a query embedding. Candidate chunks come from vector search and string-based filters. Each candidate receives a final score calculated from vector similarity, lexical relevance, intent bonuses, and penalties:
+
+\begin{equation}
+S = ((0.35V) + (0.55K) + I) \times P
+\end{equation}
+
+Here, $V$ is the non-negative cosine similarity between query and chunk embeddings, $K$ is a string relevance score, $I$ is an intent-match bonus, and $P$ is a product of page-kind and document-quality penalties. The exact implementation also considers title overlap, URL overlap, phrase matches, ordered token pairs, document type, and topic hints.
+
+\section{Answer Generation}
+
+The language model receives the user question and at most three retrieved contexts. The system prompt defines the desired assistant behavior: calm, clear, institution-focused, Turkish, concise, and suitable for live broadcast. It also instructs the model not to reveal raw source labels or internal trace data to the viewer.
+
+The model is asked to return JSON with two fields: \texttt{display\_answer} for the screen and \texttt{speech\_answer} for TTS. If the provider request fails, the local fallback summarizes retrieved contexts or states that no reliable GTU context is available.
+
+\section{Live Processing Pipeline}
+
+The live system uses a queue-based pipeline. Manual questions can be submitted from the web dashboard, while YouTube live chat messages are collected by the worker through the YouTube Data API. The worker processes active streams, creates new questions, generates answers for pending questions, prepares TTS jobs, and advances the broadcast playback state.
+
+\begin{algorithm}
+\caption{\label{alg:live-pipeline}Live question processing pipeline.}
+\begin{algorithmic}
+\Require Official GTU index, optional YouTube stream, pending question queue
+\Ensure Updated live state with current question, answer, speech, and avatar phase
+\While{worker is running}
+    \State Poll active YouTube streams for new chat messages
+    \State Insert unseen messages as pending questions
+    \State Select the oldest pending question
+    \State Retrieve relevant GTU chunks
+    \State Generate display and speech answers
+    \State Store answer and internal source traces
+    \State Queue TTS job when speech is enabled
+    \State Update broadcast playback state
+    \State Wait for the configured polling interval
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\section{Evaluation Methodology}
+
+The evaluation set contains 12 GTU-specific questions. Each case includes expected source hints, expected answer keywords, a category, and notes. The quality suite asks each question through the same RAG service used by the application and records source hits, answer keyword hits, fallback use, latency, confidence, and top source information.
+
+The main metrics are:
+
+\begin{itemize}
+    \setlength{\itemsep}{0pt}
+    \setlength{\parsep}{0pt}
+    \setlength{\topsep}{0pt}
+    \item \textbf{Top-1 source hit rate:} highest-ranked source matches expected evidence.
+    \item \textbf{Source hit rate:} any retrieved trace matches expected evidence.
+    \item \textbf{Answer keyword hit rate:} generated answer contains expected key terms.
+    \item \textbf{Fallback rate:} deterministic fallback output was used.
+    \item \textbf{Latency:} end-to-end answer generation time in milliseconds.
+\end{itemize}

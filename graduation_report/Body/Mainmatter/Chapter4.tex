@@ -1,0 +1,137 @@
+\chapter{System Design and Implementation}
+
+This chapter describes the implemented architecture, backend services, frontend views, data model, and deployment structure.
+
+\section{Overall Architecture}
+
+The system is organized as a web application with a backend API, a background worker, a frontend, a database, and a reverse proxy. The backend owns ingestion, retrieval, generation, metrics, stream state, and admin operations. The worker continuously polls YouTube and prepares queued answers. The frontend provides the public dashboard, admin console, and live broadcast stage.
+
+\begin{figure}[!htbp]
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[
+        node distance=1.1cm and 1.2cm,
+        box/.style={draw, rounded corners, align=center, minimum width=2.7cm, minimum height=0.9cm},
+        wide/.style={draw, rounded corners, align=center, minimum width=3.7cm, minimum height=0.9cm},
+        arrow/.style={-Latex, thick}
+    ]
+        \node[box] (sources) {GTU Web\\and PDFs};
+        \node[box, right=of sources] (archive) {Archive\\and Parser};
+        \node[box, right=of archive] (index) {Chunks\\and Embeddings};
+        \node[box, below=of index] (db) {PostgreSQL\\pgvector};
+        \node[wide, right=of index] (rag) {FastAPI\\RAG Service};
+        \node[box, above=of rag] (llm) {LLM\\Provider};
+        \node[box, below=of rag] (tts) {TTS\\Jobs};
+        \node[box, right=of rag] (frontend) {Next.js\\Frontend};
+        \node[box, above=of frontend] (youtube) {YouTube\\Live Chat};
+        \node[box, below=of frontend] (avatar) {Live Stage\\Avatar};
+
+        \draw[arrow] (sources) -- (archive);
+        \draw[arrow] (archive) -- (index);
+        \draw[arrow] (index) -- (db);
+        \draw[arrow] (db) -- (rag);
+        \draw[arrow] (rag) -- (llm);
+        \draw[arrow] (llm) -- (rag);
+        \draw[arrow] (rag) -- (tts);
+        \draw[arrow] (rag) -- (frontend);
+        \draw[arrow] (youtube) -- (rag);
+        \draw[arrow] (frontend) -- (avatar);
+    \end{tikzpicture}
+    }
+    \caption{\label{fig:architecture}High-level system architecture.}
+\end{figure}
+
+\section{Backend API}
+
+The backend is implemented with FastAPI. It initializes the database on startup, mounts generated audio files under a media route, and exposes endpoints under the \texttt{/api} prefix. Public endpoints include health checks, manual question submission, question listing, metrics, and live state. Admin endpoints require HTTP Basic authentication and control source ingest, archive crawling, archive indexing, PDF upload, index rebuild, document listing, YouTube stream connection, archive statistics, and runtime settings.
+
+The backend is split into services:
+
+\begin{itemize}
+    \item \textbf{IngestService:} crawls sources, parses HTML/PDF content, archives files, chunks text, and stores embeddings.
+    \item \textbf{RagService:} retrieves chunks, calls the LLM, and records results.
+    \item \textbf{LLMService:} builds prompts, manages provider calls, parses JSON answers, and handles fallbacks.
+    \item \textbf{EmbeddingService:} generates provider embeddings or deterministic hashed embeddings.
+    \item \textbf{YouTubeService:} connects to live chat sessions and polls new messages.
+    \item \textbf{SpeechService and TTSService:} queue, cache, generate, and attach answer audio.
+    \item \textbf{BroadcastService:} prepares stage state, ambient segments, playback phases, and avatar states.
+\end{itemize}
+
+\section{Database Model}
+
+The database model is designed around documents, chunks, questions, answers, traces, streams, speech jobs, and broadcast playback. Table \ref{tab:data-model} summarizes the most important entities.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{\label{tab:data-model}Core database entities.}
+    \begin{tabularx}{\textwidth}{lX}
+        \toprule
+        Entity & Purpose \\
+        \midrule
+        \texttt{Document} & Stores source metadata, type, title, URL, filename, checksum, and document-level metadata. \\
+        \texttt{Chunk} & Stores chunk content, ordinal position, token count, metadata, and embedding vector. \\
+        \texttt{Question} & Stores manual or YouTube questions with status and source information. \\
+        \texttt{Answer} & Stores generated answer text, speech text, model name, latency, confidence, fallback flag, and audio metadata. \\
+        \texttt{AnswerTrace} & Stores internal evidence snippets and retrieval scores for each generated answer. \\
+        \texttt{StreamSession} & Stores connected YouTube stream metadata and polling state. \\
+        \texttt{SpeechJob} & Stores queued or generated TTS jobs for answers and ambient broadcast segments. \\
+        \texttt{BroadcastPlayback} & Stores the current global playback item and timing state for the live stage. \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Provider Configuration}
+
+The system can target OpenAI or OpenRouter through a common OpenAI-compatible client. Provider selection is controlled by \texttt{AI\_PROVIDER}. Chat and embedding models can be set with \texttt{AI\_CHAT\_MODEL} and \texttt{AI\_EMBEDDING\_MODEL}, while provider-specific defaults remain available. TTS uses a separate provider setting so that the answer model and voice model can be selected independently.
+
+If no API key is configured, embeddings fall back to deterministic hashed vectors and answers fall back to local summarization. This design keeps tests deterministic and prevents local development from failing only because a paid provider key is missing.
+
+\section{Admin Console}
+
+The admin console is implemented as a Next.js page. It allows the operator to load the default GTU source profile, edit seed URLs and PDF URLs, control allowed domains and URL patterns, crawl sources to the local archive, index archived sources, upload PDFs, rebuild indexes, connect a YouTube stream, monitor archive statistics, list indexed documents, and enable or disable TTS.
+
+This console is important because a live assistant should not be treated as a black box. Before a demo, the operator can verify that the corpus has enough sources and that the active stream is connected.
+
+\section{Public Dashboard}
+
+The public dashboard provides a manual question form, recent question feed, and system metrics. Manual questions are placed into the queue rather than being forced immediately onto the stage. This matches the live broadcast behavior: the system can continue the current answer or ambient segment before moving to the next question.
+
+\section{Live Broadcast Stage}
+
+The live stage is a 16:9 broadcast-style page. It polls \texttt{/api/live/state}, displays the current question and answer, plays answer audio when available, and drives avatar state. The avatar is loaded with React Three Fiber and Three.js. Mouth movement is influenced by audio duration, playback timing, and a Web Audio meter, so speech animation lasts approximately as long as the spoken answer.
+
+The stage separates visual state from backend processing. A question can be pending, an answer can be generated, TTS can still be pending, and the previous speech can continue playing. This separation prevents the UI from skipping answers too quickly.
+
+\section{Deployment Topology}
+
+The repository includes a Docker Compose configuration with PostgreSQL, pgvector, Redis, backend, worker, frontend, and Caddy. PostgreSQL is the main production data store. Redis is included for future queue/cache expansion, although the current demo primarily uses database state and the worker loop. Caddy acts as a reverse proxy and can use HTTPS when a production domain is configured.
+
+\begin{figure}[!htbp]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1cm and 1cm,
+        svc/.style={draw, rounded corners, align=center, minimum width=2.8cm, minimum height=0.85cm},
+        arrow/.style={-Latex, thick}
+    ]
+        \node[svc] (client) {Browser};
+        \node[svc, right=of client] (caddy) {Caddy\\Reverse Proxy};
+        \node[svc, right=of caddy] (frontend) {Frontend\\Next.js};
+        \node[svc, below=of frontend] (backend) {Backend\\FastAPI};
+        \node[svc, right=of backend] (worker) {Worker};
+        \node[svc, below=of backend] (db) {PostgreSQL\\pgvector};
+        \node[svc, below=of worker] (redis) {Redis};
+
+        \draw[arrow] (client) -- (caddy);
+        \draw[arrow] (caddy) -- (frontend);
+        \draw[arrow] (frontend) -- (backend);
+        \draw[arrow] (backend) -- (db);
+        \draw[arrow] (worker) -- (backend);
+        \draw[arrow] (worker) -- (db);
+        \draw[arrow] (worker) -- (redis);
+    \end{tikzpicture}
+    \caption{\label{fig:deployment}Docker Compose deployment topology.}
+\end{figure}
+
+\section{Implementation Status}
+
+The implemented prototype covers the main data path from official GTU sources to archive, index, retrieval, generation, TTS job handling, live state, and visual presentation. It also includes automated tests for API behavior, evaluation metrics, provider selection, LLM response parsing, TTS behavior, and live-stage queue behavior.
